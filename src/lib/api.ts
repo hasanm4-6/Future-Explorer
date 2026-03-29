@@ -8,8 +8,14 @@ import {
   Slot,
 } from "@/types";
 
-const API_BASE =
-  import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:5000/api";
+let API_BASE = "";
+if (import.meta.env.VITE_PUBLIC_ENVIRONMENT === "production") {
+  API_BASE =
+    import.meta.env.VITE_PUBLIC_API_URL ||
+    "https://future-explorer-backend-skat.vercel.app/api";
+} else {
+  API_BASE = import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:5000/api";
+}
 class ApiClient {
   // private getToken(): string | null {
   //   if (typeof window === "undefined") return null;
