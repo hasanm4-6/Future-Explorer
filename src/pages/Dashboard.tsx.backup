@@ -1,0 +1,583 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import {
+  Plus, Star, Trophy, BookOpen, Settings, ArrowRight, Eye, BarChart3,
+  Clock, Target, TrendingUp, Flame, Zap, Compass, Users, TrendingDown, Calendar,
+} from "lucide-react";
+import { motion } from "framer-motion";
+import Navbar from "@/components/layout/Navbar";
+import { automationService } from "@/lib/automation";
+import { emailScheduler } from "@/lib/scheduler";
+import { useEffect } from "react";
+import { Progress } from "@/components/ui/progress";
+
+const children = [
+  {
+    name: "Mia",
+    avatar: "🦊",
+    age: 7,
+    level: 1,
+    lessonsCompleted: 4,
+    totalLessons: 8,
+    badges: 3,
+    recentBadge: "Pattern Finder",
+    weeklyMinutes: 42,
+    quizAccuracy: 85,
+    streak: 4,
+    currentMission: "Smart Helpers",
+    missionProgress: 50,
+    skillsMastered: ["What is AI", "Computer Learning", "Patterns"],
+    skillsInProgress: ["Training AI", "AI Helpers"],
+    lastPracticeDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+    quizTrend: "improving" as "improving" | "declining" | "neutral",
+    nextLesson: {
+      title: "AI in Your World",
+      reason: "Builds on fractions basics",
+      lessonId: 6
+    }
+  },
+  {
+    name: "Leo",
+    avatar: "🐯",
+    age: 8,
+    level: 1,
+    lessonsCompleted: 2,
+    totalLessons: 8,
+    badges: 1,
+    recentBadge: "AI Curious",
+    weeklyMinutes: 18,
+    quizAccuracy: 70,
+    streak: 1,
+    currentMission: "Patterns Everywhere",
+    missionProgress: 25,
+    skillsMastered: ["What is AI"],
+    skillsInProgress: ["Computer Learning", "Patterns"],
+    lastPracticeDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
+    quizTrend: "neutral" as "improving" | "declining" | "neutral",
+    nextLesson: {
+      title: "Teaching a Robot",
+      reason: "Strengthens pattern recognition",
+      lessonId: 4
+    }
+  },
+];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.08, duration: 0.4 } }),
+} as const;
+
+type ViewMode = "parent" | "child";
+
+const Dashboard = () => {
+  const [viewMode, setViewMode] = useState<ViewMode>("parent");
+  const [selectedChild, setSelectedChild] = useState(0);
+  const child = children[selectedChild];
+
+  // Mock user and child IDs - in real app, this would come from auth context
+  const mockUserId = "user-123";
+  const mockChildId = `child-${selectedChild}`;
+
+  useEffect(() => {
+    // Check if first mission reminder should be sent
+    automationService.checkFirstMissionReminder(mockUserId);
+    
+    // Update child progress data for weekly summaries
+    automationService.updateLessonProgress(mockUserId, mockChildId, {
+      lessonsCompleted: child.lessonsCompleted,
+      achievements: child.badges > 0 ? [child.recentBadge] : [],
+      weeklyMinutes: child.weeklyMinutes,
+      currentMission: child.currentMission
+    });
+  }, [selectedChild]);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
+        {/* View Toggle */}
+        <motion.div className="mb-6" initial="hidden" animate="visible" variants={fadeUp} custom={0}>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="font-display text-3xl font-bold">
+                {viewMode === "parent" ? "Welcome back, Parent! 👋" : `${child.avatar} ${child.name}'s Adventure`}
+              </h1>
+              <div className="mt-1 flex items-center gap-2">
+                <div className={`h-2 w-2 rounded-full ${viewMode === "parent" ? "bg-explorer-blue" : "bg-explorer-coral"}`} />
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {viewMode === "parent" ? "You are in Parent View" : "You are in Child Mode"}
+                </p>
+              </div>
+            </div>
+            <div className="inline-flex rounded-2xl bg-muted p-1">
+              <button
+                onClick={() => setViewMode("parent")}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold font-display transition-all ${
+                  viewMode === "parent"
+                    ? "bg-card text-foreground shadow-card"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <BarChart3 className="h-4 w-4" /> Parent View
+              </button>
+              <button
+                onClick={() => setViewMode("child")}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold font-display transition-all ${
+                  viewMode === "child"
+                    ? "bg-gradient-coral text-primary-foreground shadow-playful"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Compass className="h-4 w-4" /> Explorer View
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Child Selector (always visible) */}
+        <motion.div className="mb-6 flex gap-3 overflow-x-auto pb-2" initial="hidden" animate="visible" variants={fadeUp} custom={1}>
+          {children.length === 0 ? (
+            <motion.div
+              className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border p-8 min-h-[200px] text-center w-full"
+              initial="hidden"
+              animate="visible"
+              variants={fadeUp}
+              custom={1}
+            >
+              <div className="mb-4">
+                <Users className="h-12 w-12 text-muted-foreground mx-auto" />
+              </div>
+              <h3 className="mb-2 font-display text-lg font-semibold">No Explorers Yet</h3>
+              <p className="mb-4 text-sm text-muted-foreground max-w-xs">
+                Add your first child profile to start their AI learning adventure!
+              </p>
+              <Link to="/create-child">
+                <Button variant="explorer" className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Add First Explorer
+                </Button>
+              </Link>
+            </motion.div>
+          ) : (
+            <>
+              {children.map((child, index) => (
+                <button
+                  key={index}
+                  onClick={() => setSelectedChild(index)}
+                  className={`flex items-center gap-3 rounded-2xl border-2 p-3 min-w-[140px] transition-all ${
+                    selectedChild === index
+                      ? "border-primary bg-primary/5 shadow-card"
+                      : "border-border bg-card hover:border-primary/30"
+                  }`}
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-xl">{child.avatar}</div>
+                  <div className="text-left">
+                    <p className="font-display font-bold text-sm">{child.name}</p>
+                    <p className="text-xs text-muted-foreground">Age {child.age}</p>
+                  </div>
+                </button>
+              ))}
+              {children.length < 3 && (
+                <Link to="/create-child" className="flex items-center gap-2 rounded-2xl border-2 border-dashed border-border p-3 min-w-[140px] text-muted-foreground hover:border-primary/30 hover:text-foreground transition-colors">
+                  <Plus className="h-5 w-5" />
+                  <span className="font-display font-semibold text-sm">Add</span>
+                </Link>
+              )}
+            </>
+          )}
+        </motion.div>
+
+        {/* PARENT VIEW - ENHANCED DASHBOARD WIDGETS */}
+        {viewMode === "parent" && (
+          <>
+            {children.length === 0 ? (
+              <motion.div
+                className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border p-8 min-h-[300px] text-center"
+                initial="hidden"
+                animate="visible"
+                variants={fadeUp}
+                custom={2}
+              >
+                <div className="mb-4">
+                  <Users className="h-16 w-16 text-muted-foreground mx-auto" />
+                </div>
+                <h3 className="mb-2 font-display text-xl font-semibold">Start Your AI Adventure</h3>
+                <p className="mb-6 text-muted-foreground max-w-md">
+                  Add your first child profile to track their progress, see achievements, and monitor their AI learning journey.
+                </p>
+                <Link to="/create-child">
+                  <Button variant="explorer" size="lg" className="gap-2">
+                    <Plus className="h-5 w-5" />
+                    Add First Explorer
+                  </Button>
+                </Link>
+              </motion.div>
+            ) : (
+              <>
+                {/* 1️⃣ CURRENT MISSION WIDGET */}
+                <motion.div className="mb-8 grid gap-6 lg:grid-cols-2" initial="hidden" animate="visible" variants={fadeUp} custom={2}>
+                  <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-coral">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-coral">
+                        <Target className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-lg font-bold">Current Mission</h3>
+                        <p className="text-xs text-muted-foreground">{child.name}'s Progress</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-display text-xl font-bold">{child.currentMission}</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          child.missionProgress === 100 
+                            ? "bg-explorer-green/10 text-explorer-green" 
+                            : "bg-explorer-coral/10 text-explorer-coral"
+                        }`}>
+                          {child.missionProgress === 100 ? "Completed" : "In Progress"}
+                        </span>
+                      </div>
+                      <Progress value={child.missionProgress} className="h-3" />
+                      <p className="text-xs text-muted-foreground">Mission {child.lessonsCompleted + 1} of {child.totalLessons}</p>
+                    </div>
+                  </div>
+
+                  {/* 2️⃣ WEEKLY LEARNING MINUTES WIDGET */}
+                  <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-blue">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-blue">
+                        <Clock className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-lg font-bold">Weekly Learning Minutes</h3>
+                        <p className="text-xs text-muted-foreground">This week's progress</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-4">
+                        <span className="font-display text-3xl font-bold text-explorer-blue">{child.weeklyMinutes}</span>
+                        <span className="text-sm text-muted-foreground">minutes</span>
+                      </div>
+                      {/* Weekly mini bar visualization */}
+                      <div className="flex gap-1">
+                        {[...Array(7)].map((_, i) => (
+                          <div
+                            key={i}
+                            className={`h-8 flex-1 rounded ${
+                              i < Math.floor(child.weeklyMinutes / 10)
+                                ? "bg-explorer-blue"
+                                : "bg-muted"
+                            }`}
+                            title={`Day ${i + 1}: ${i < Math.floor(child.weeklyMinutes / 10) ? 'Active' : 'No activity'}`}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Daily activity this week</p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* 3️⃣ QUIZ ACCURACY TREND WIDGET */}
+                <motion.div className="mb-8 grid gap-6 lg:grid-cols-2" initial="hidden" animate="visible" variants={fadeUp} custom={3}>
+                  <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-green">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-green">
+                        {child.quizTrend === "improving" ? (
+                          <TrendingUp className="h-6 w-6 text-primary-foreground" />
+                        ) : child.quizTrend === "declining" ? (
+                          <TrendingDown className="h-6 w-6 text-primary-foreground" />
+                        ) : (
+                          <Target className="h-6 w-6 text-primary-foreground" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-display text-lg font-bold">Quiz Accuracy Trend</h3>
+                        <p className="text-xs text-muted-foreground">Recent performance</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-4">
+                        <span className="font-display text-3xl font-bold">{child.quizAccuracy}%</span>
+                        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${
+                          child.quizTrend === "improving" 
+                            ? "bg-explorer-green/10 text-explorer-green" 
+                            : child.quizTrend === "declining" 
+                              ? "bg-destructive/10 text-destructive" 
+                              : "bg-muted text-muted-foreground"
+                        }`}>
+                          {child.quizTrend === "improving" ? (
+                            <><TrendingUp className="h-3 w-3" /> Improving</>
+                          ) : child.quizTrend === "declining" ? (
+                            <><TrendingDown className="h-3 w-3" /> Needs Attention</>
+                          ) : (
+                            <><Target className="h-3 w-3" /> Stable</>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {child.quizTrend === "improving" 
+                          ? "Great progress! Keep up the excellent work." 
+                          : child.quizTrend === "declining" 
+                            ? "Consider reviewing recent lessons for support." 
+                            : "Consistent performance. Good job!"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 4️⃣ SKILLS: MASTERED VS IN PROGRESS WIDGET */}
+                  <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-gold">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-gold">
+                        <Trophy className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-lg font-bold">Skills Overview</h3>
+                        <p className="text-xs text-muted-foreground">Learning progress</p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center p-3 rounded-xl bg-explorer-green/5">
+                          <div className="flex items-center justify-center gap-2 mb-2">
+                            <Star className="h-5 w-5 text-explorer-green" />
+                            <span className="text-2xl font-bold text-explorer-green">{child.skillsMastered.length}</span>
+                          </div>
+                          <p className="text-xs font-semibold text-explorer-green">Mastered</p>
+                        </div>
+                        <div className="text-center p-3 rounded-xl bg-accent/20">
+                          <div className="flex items-center justify-center gap-2 mb-2">
+                            <Target className="h-5 w-5 text-accent-foreground" />
+                            <span className="text-2xl font-bold text-accent-foreground">{child.skillsInProgress.length}</span>
+                          </div>
+                          <p className="text-xs font-semibold text-accent-foreground">In Progress</p>
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {child.skillsMastered.length > child.skillsInProgress.length 
+                          ? "Excellent mastery! Focus on completing current skills." 
+                          : "Good balance of new and review topics."}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* 5️⃣ SUGGESTED NEXT LESSON WIDGET */}
+                <motion.div className="mb-8 grid gap-6 lg:grid-cols-2" initial="hidden" animate="visible" variants={fadeUp} custom={4}>
+                  <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-purple">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-purple">
+                        <Compass className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-lg font-bold">Suggested Next Lesson</h3>
+                        <p className="text-xs text-muted-foreground">Recommended learning path</p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-4 rounded-xl bg-muted p-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-purple font-display text-lg font-bold text-primary-foreground">
+                          {child.lessonsCompleted + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-display font-bold">{child.nextLesson.title}</p>
+                          <p className="text-sm text-muted-foreground">~5 min · {child.nextLesson.reason}</p>
+                        </div>
+                      </div>
+                      <Link to={`/lesson/${child.nextLesson.lessonId}`}>
+                        <Button variant="explorer" className="w-full gap-2">
+                          Start Next Lesson <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* 6️⃣ GENTLE NUDGE REMINDERS WIDGET */}
+                  <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-pink">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-pink">
+                        <Calendar className="h-6 w-6 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-lg font-bold">Gentle Reminders</h3>
+                        <p className="text-xs text-muted-foreground">Encouragement & consistency</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {/* Calculate days since last practice */}
+                      {(() => {
+                        const daysSincePractice = Math.floor((Date.now() - child.lastPracticeDate.getTime()) / (1000 * 60 * 60 * 24));
+                        const isGoodConsistency = child.weeklyMinutes >= 30; // 30+ minutes is good
+                        
+                        return (
+                          <>
+                            <div className={`flex items-center gap-3 p-3 rounded-xl ${
+                              daysSincePractice <= 2 
+                                ? "bg-explorer-green/10" 
+                                : daysSincePractice <= 5 
+                                  ? "bg-explorer-blue/10" 
+                                  : "bg-explorer-pink/10"
+                            }`}>
+                              {daysSincePractice <= 2 ? (
+                                <><Clock className="h-5 w-5 text-explorer-green" /></>
+                              ) : (
+                                <><Calendar className="h-5 w-5 text-explorer-pink" /></>
+                              )}
+                              <div className="flex-1">
+                                <p className={`font-semibold text-sm ${
+                                  daysSincePractice <= 2 
+                                    ? "text-explorer-green" 
+                                    : "text-explorer-pink"
+                                }`}>
+                                  {daysSincePractice === 0 ? "Active today!" : `${daysSincePractice} days since last practice`}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {daysSincePractice <= 2 ? "Great consistency!" : "Time for a quick session"}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {isGoodConsistency && (
+                              <div className="flex items-center gap-3 p-3 rounded-xl bg-explorer-gold/10">
+                                <Flame className="h-5 w-5 text-explorer-gold" />
+                                <div className="flex-1">
+                                  <p className="font-semibold text-sm text-explorer-gold">Great consistency this week!</p>
+                                  <p className="text-xs text-muted-foreground">{child.weeklyMinutes} minutes of learning</p>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                      
+                      <div className="text-xs text-muted-foreground text-center p-3 bg-accent/20 rounded-xl">
+                        {child.streak > 3 ? (
+                          <><Flame className="h-4 w-4 text-explorer-gold inline mr-1" /> Amazing {child.streak}-day streak!</>
+                        ) : child.streak > 0 ? (
+                          <><Zap className="h-4 w-4 text-explorer-blue inline mr-1" /> Keep up the {child.streak}-day streak!</>
+                        ) : (
+                          <><Star className="h-4 w-4 text-explorer-coral inline mr-1" /> Start a new streak today!</>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+
+            {/* Quick links */}
+            <motion.div className="flex gap-4" initial="hidden" animate="visible" variants={fadeUp} custom={6}>
+              <Link to="/settings"><Button variant="ghost" size="sm"><Settings className="h-4 w-4" /> Account Settings</Button></Link>
+              <Link to="/downloads"><Button variant="ghost" size="sm"><BookOpen className="h-4 w-4" /> Downloads</Button></Link>
+              <Link to="/privacy"><Button variant="ghost" size="sm"><Eye className="h-4 w-4" /> Privacy</Button></Link>
+            </motion.div>
+          </>
+        )}
+
+        {/* CHILD VIEW */}
+        {viewMode === "parent" ? null : (
+          <>
+            {/* Child Stats Bar */}
+            <motion.div className="mb-8 grid gap-4 sm:grid-cols-3" initial="hidden" animate="visible" variants={fadeUp} custom={2}>
+              <div className="flex items-center gap-4 rounded-2xl bg-card p-5 shadow-card">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-gold text-2xl">
+                  <Trophy className="h-6 w-6 text-primary-foreground" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold font-display">{child.badges}</p>
+                  <p className="text-xs text-muted-foreground">Badges Earned</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 rounded-2xl bg-card p-5 shadow-card">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-coral text-2xl">
+                  <Flame className="h-6 w-6 text-primary-foreground" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold font-display">{child.streak} day{child.streak !== 1 ? "s" : ""}</p>
+                  <p className="text-xs text-muted-foreground">Learning Streak 🔥</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 rounded-2xl bg-card p-5 shadow-card">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-green text-2xl">
+                  <Star className="h-6 w-6 text-primary-foreground" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold font-display">Level {child.level}</p>
+                  <p className="text-xs text-muted-foreground">Explorer Rank</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Current Mission CTA */}
+            <motion.div
+              className="mb-8 overflow-hidden rounded-2xl bg-gradient-coral p-8 text-primary-foreground shadow-playful"
+              initial="hidden"
+              animate="visible"
+              variants={fadeUp}
+              custom={3}
+            >
+              <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-foreground/20 backdrop-blur-sm">
+                  <Zap className="h-8 w-8" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold opacity-80">Your Current Mission</p>
+                  <h2 className="font-display text-2xl font-bold">Mission {child.lessonsCompleted + 1}: {child.currentMission}</h2>
+                  <p className="text-sm opacity-80">Continue your adventure and earn a new badge!</p>
+                </div>
+                <Link to={`/lesson/${child.lessonsCompleted + 1}`}>
+                  <Button size="xl" className="bg-primary-foreground text-foreground hover:bg-primary-foreground/90 font-display font-bold">
+                    Start Mission <ArrowRight className="h-5 w-5" />
+                  </Button>
+                </Link>
+              </div>
+            </motion.div>
+
+            {/* Badge collection */}
+            <motion.div className="mb-8" initial="hidden" animate="visible" variants={fadeUp} custom={4}>
+              <h2 className="mb-4 font-display text-xl font-bold">🏅 My Badges</h2>
+              <div className="flex flex-wrap gap-4">
+                {["AI Curious", "Pattern Finder", "Data Detective", "Robot Trainer"].slice(0, child.badges).map((badge) => (
+                  <div key={badge} className="flex items-center gap-2 rounded-2xl bg-card p-4 shadow-card">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-gold">
+                      <Star className="h-5 w-5 text-primary-foreground" />
+                    </div>
+                    <span className="font-display font-bold text-sm">{badge}</span>
+                  </div>
+                ))}
+                {child.badges < 8 && (
+                  <div className="flex items-center gap-2 rounded-2xl border-2 border-dashed border-border p-4 text-muted-foreground">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                      <span className="text-lg">?</span>
+                    </div>
+                    <span className="font-display font-semibold text-sm">Next badge</span>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Progress to next level */}
+            <motion.div className="mb-8 rounded-2xl bg-card p-6 shadow-card" initial="hidden" animate="visible" variants={fadeUp} custom={5}>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-display font-bold">Level 1 Progress</h3>
+                <span className="font-display font-bold text-sm">{child.lessonsCompleted}/{child.totalLessons} missions</span>
+              </div>
+              <div className="h-4 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-gradient-coral transition-all duration-700" style={{ width: `${(child.lessonsCompleted / child.totalLessons) * 100}%` }} />
+              </div>
+            </motion.div>
+
+            {/* View full map link */}
+            <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={6}>
+              <Link to="/lessons">
+                <Button variant="explorer-outline" size="lg" className="w-full sm:w-auto">
+                  <Compass className="h-5 w-5" /> View Explorer Map <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </motion.div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;

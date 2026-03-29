@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 42 33% 97%;
+    --foreground: 230 25% 18%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 230 25% 18%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 230 25% 18%;
+
+    --primary: 4 85% 62%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 200 75% 55%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 40 25% 93%;
+    --muted-foreground: 230 12% 46%;
+
+    --accent: 45 95% 55%;
+    --accent-foreground: 35 60% 18%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 22% 88%;
+    --input: 40 22% 88%;
+    --ring: 4 85% 62%;
+
+    --radius: 1rem;
+
+    --explorer-coral: 4 85% 62%;
+    --explorer-blue: 200 75% 55%;
+    --explorer-gold: 45 95% 55%;
+    --explorer-green: 150 55% 48%;
+    --explorer-purple: 270 55% 62%;
+    --explorer-pink: 330 75% 68%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Nunito', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Fredoka', sans-serif;
+  }
+
+  .font-dyslexia {
+    font-family: 'Comic Sans MS', 'Chalkboard SE', 'Bradley Hand', cursive, sans-serif;
+    letter-spacing: 0.05em;
+    line-height: 1.6;
+  }
+}
+
+@layer components {
+  .bg-gradient-hero {
+    background: linear-gradient(
+      160deg,
+      hsl(42 33% 97%) 0%,
+      hsl(200 60% 95%) 40%,
+      hsl(42 40% 96%) 70%,
+      hsl(330 40% 96%) 100%
+    );
+  }
+
+  .bg-gradient-coral {
+    background: linear-gradient(135deg, hsl(4 85% 62%), hsl(330 75% 68%));
+  }
+
+  .bg-gradient-blue {
+    background: linear-gradient(135deg, hsl(200 75% 55%), hsl(270 55% 62%));
+  }
+
+  .bg-gradient-gold {
+    background: linear-gradient(135deg, hsl(45 95% 55%), hsl(30 90% 55%));
+  }
+
+  .bg-gradient-green {
+    background: linear-gradient(135deg, hsl(150 55% 48%), hsl(170 60% 42%));
+  }
+
+  .text-gradient-coral {
+    background: linear-gradient(135deg, hsl(4 85% 62%), hsl(330 75% 68%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-blue {
+    background: linear-gradient(135deg, hsl(200 75% 55%), hsl(270 55% 62%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .shadow-playful {
+    box-shadow: 0 8px 30px -8px hsl(4 85% 62% / 0.15);
+  }
+
+  .shadow-card {
+    box-shadow: 0 4px 24px -4px hsl(230 25% 18% / 0.08);
+  }
+
+  .shadow-card-hover {
+    box-shadow: 0 8px 32px -6px hsl(230 25% 18% / 0.14);
+  }
+
+  .lesson-node {
+    @apply relative flex items-center justify-center rounded-full transition-all duration-300;
+  }
+
+  .lesson-node-unlocked {
+    @apply bg-gradient-coral shadow-playful cursor-pointer;
+  }
+
+  .lesson-node-locked {
+    @apply bg-muted cursor-not-allowed opacity-60;
+  }
+
+  .lesson-node-completed {
+    @apply bg-gradient-green shadow-playful cursor-pointer;
+  }
+}
+
+@layer utilities {
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+  .animation-delay-600 {
+    animation-delay: 600ms;
+  }
+}

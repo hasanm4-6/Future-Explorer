@@ -1,0 +1,2 @@
+# Ignore VS Code settings file from git
+.vscode/settings.json
