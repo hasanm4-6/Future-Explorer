@@ -22,7 +22,8 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 
 import { AuthProvider } from "@/contexts/AuthProvider";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import PublicRoute from "./components/PublicRoute";
+import PublicRoute from "@/components/PublicRoute";
+import RootRoute from "@/components/RootRoute";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -34,14 +35,15 @@ const App = () => (
         <AuthProvider>
           <BrowserRouter>
             <Routes>
-              <Route
+              {/* <Route
                 path="/"
                 element={
-                  <PublicRoute>
-                    <Index />
-                  </PublicRoute>
+                  // <PublicRoute>
+                  <Index />
+                  // </PublicRoute>
                 }
-              />
+              /> */}
+              <Route path="/" element={<RootRoute />} />
 
               <Route
                 path="/login"

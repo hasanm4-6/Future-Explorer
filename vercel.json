@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://future-explorer-backend-skat.vercel.app/api/:path*"
+    }
+  ]
+}

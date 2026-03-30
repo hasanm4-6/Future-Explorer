@@ -1381,6 +1381,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { trackEvent } from "@/lib/tracking";
 import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
+import { useAuthContext } from "@/contexts/AuthProvider";
 
 // ─────────────────────────────────────────────
 // Constants
@@ -1755,6 +1757,7 @@ const AvatarPicker = ({ state, dispatch }) => {
 // ─────────────────────────────────────────────
 
 const Login = () => {
+  const { user, login, logout, signup } = useAuthContext();
   const navigate = useNavigate();
 
   // Mode
@@ -1840,9 +1843,11 @@ const Login = () => {
     }
     setLoading(true);
     try {
-      await api.login(loginEmail, loginPassword);
+      await login(loginEmail, loginPassword);
       trackEvent("login_success");
-      navigate("/dashboard");
+      // console.log("before redirection after login");
+      // // navigate("/");
+      // console.log("after redirection after login");
     } catch (err) {
       console.error("Failed to login:", err);
       setGlobalErr("Invalid email or password.");
@@ -1953,7 +1958,7 @@ const Login = () => {
       //   const tempId = crypto.randomUUID();
       //   avatarUrl = await uploadAvatar(s.avatarFile, tempId);
       // }
-      const res = await api.signup(formData);
+      await signup(formData);
       // const res = await fetch("/api/auth/signup", {
       //   method: "POST",
       //   headers: {

@@ -1,12 +1,15 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Compass, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { useAuthContext } from "@/contexts/AuthProvider";
 
 const Navbar = () => {
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { user, logout } = useAuthContext();
   const isLoggedIn = [
     "/dashboard",
     "/lessons",
@@ -14,7 +17,11 @@ const Navbar = () => {
     "/downloads",
     "/settings",
   ].some((p) => location.pathname.startsWith(p));
-  const isTeacher = location.pathname.startsWith("/teacher");
+
+  // const isTeacher = location.pathname.startsWith("/teacher");
+
+  const isTeacher = user?.role === "teacher";
+  const isParent = user?.role === "parent";
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border/50 bg-card/80 backdrop-blur-md">
@@ -45,7 +52,7 @@ const Navbar = () => {
                 Settings
               </Link>
             </>
-          ) : isLoggedIn ? (
+          ) : isParent ? (
             <>
               <Link
                 to="/dashboard"
@@ -97,19 +104,18 @@ const Navbar = () => {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          {isLoggedIn ? (
-            // <Link to="/" asChild>
+          {user ? (
             <Button
               onClick={async () => {
-                await api.logout();
+                await logout();
+                navigate("/");
               }}
               variant="explorer-outline"
               size="sm"
             >
-              <Link to="/">Log Out</Link>
+              Log Out
             </Button>
           ) : (
-            // </Link>
             <>
               <Link to="/login">
                 <Button variant="ghost" size="sm">
@@ -142,7 +148,7 @@ const Navbar = () => {
       {mobileOpen && (
         <div className="border-t border-border bg-card p-4 md:hidden animate-slide-up">
           <div className="flex flex-col gap-3">
-            {isLoggedIn ? (
+            {user ? (
               <>
                 <Link
                   to="/dashboard"
