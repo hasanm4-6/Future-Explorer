@@ -67,11 +67,11 @@ const App = () => (
                 <Route path="/lesson/:id" element={<LessonDetail />} />
                 <Route path="/downloads" element={<Downloads />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/data-management" element={<DataManagement />} />
                 <Route path="/teacher" element={<TeacherDashboard />} />
               </Route>
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/privacy-summary" element={<PrivacySummary />} />
-              <Route path="/data-management" element={<DataManagement />} />
               <Route path="/parental-consent" element={<ParentalConsent />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

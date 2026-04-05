@@ -2,47 +2,55 @@ import {
   ApiResponse,
   Booking,
   DashboardStats,
+  DbChildProfile,
+  LessonWithScenes,
+  LessonWithStatus,
   PaginatedResponse,
   PriceCalculation,
   PricingConfig,
   Slot,
 } from "@/types";
 
-// let API_BASE = "";
-// if (import.meta.env.VITE_PUBLIC_ENVIRONMENT === "production") {
-//   API_BASE =
-//     import.meta.env.VITE_PUBLIC_API_URL ||
-//     "https://future-explorer-backend-skat.vercel.app/api";
-// } else {
-//   API_BASE = import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:5000/api";
-// }
-
-// const API_BASE =
-//   import.meta.env.VITE_PUBLIC_ENVIRONMENT === "production"
-//     ? "https://future-explorer-backend-skat.vercel.app/api"
-//     : "http://localhost:5000/api";
+export interface ApiClientError extends Error {
+  status?: number;
+  errors?: Array<{ field: string; message: string }>;
+}
 
 const API_BASE = "/api";
+
 class ApiClient {
-  // private getToken(): string | null {
-  //   if (typeof window === "undefined") return null;
-  //   return localStorage.getItem("futureexplorer_token");
-  // }
+  private buildError(payload: unknown, status: number): ApiClientError {
+    const normalized =
+      typeof payload === "object" && payload !== null
+        ? (payload as { message?: unknown; errors?: unknown })
+        : {};
+
+    const error = new Error(
+      typeof normalized.message === "string"
+        ? normalized.message
+        : `HTTP ${status}`,
+    ) as ApiClientError;
+
+    error.status = status;
+    error.errors = Array.isArray(normalized.errors)
+      ? normalized.errors.filter(
+          (entry): entry is { field: string; message: string } =>
+            typeof entry?.field === "string" &&
+            typeof entry?.message === "string",
+        )
+      : undefined;
+
+    return error;
+  }
 
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
   ): Promise<T> {
-    // const token = this.getToken();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...((options.headers as Record<string, string>) || {}),
-      // credentials: "include",
     };
-
-    // if (token) {
-    //   headers["Authorization"] = `Bearer ${token}`;
-    // }
 
     const res = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
@@ -54,7 +62,7 @@ class ApiClient {
       const error = await res
         .json()
         .catch(() => ({ message: "Network error" }));
-      throw new Error(error.message || `HTTP ${res.status}`);
+      throw this.buildError(error, res.status);
     }
 
     if (res.headers.get("content-type")?.includes("text/csv")) {
@@ -64,7 +72,6 @@ class ApiClient {
     return res.json();
   }
 
-  // Public booking endpoints
   async createBooking(
     data: Record<string, unknown>,
   ): Promise<ApiResponse<Booking>> {
@@ -91,14 +98,6 @@ class ApiClient {
     );
   }
 
-  // Auth
-  // async signup(data: any) {
-  //   return this.request("/auth/signup", {
-  //     method: "POST",
-  //     body: JSON.stringify(data),
-  //   });
-  // }
-
   async signup(formData: FormData) {
     return fetch(`${API_BASE}/auth/signup`, {
       method: "POST",
@@ -106,7 +105,7 @@ class ApiClient {
       credentials: "include",
     }).then(async (res) => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw this.buildError(data, res.status);
       return data;
     });
   }
@@ -122,7 +121,7 @@ class ApiClient {
     email: string,
     password: string,
   ): Promise<
-    ApiResponse<{ token: string; admin: { name: string; email: string } }>
+    ApiResponse<{ token: string; parent: { name: string; email: string } }>
   > {
     return this.request("/auth/login", {
       method: "POST",
@@ -140,18 +139,91 @@ class ApiClient {
     return this.request("/auth/me");
   }
 
-  async getChildren(): Promise<ApiResponse<{ children: any[] }>> {
+  async updateProfile(data: {
+    name: string;
+    email: string;
+    currentPassword?: string;
+  }) {
+    return this.request("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }) {
+    return this.request("/auth/password", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAccount(data: {
+    currentPassword: string;
+    confirmation: "DELETE";
+  }) {
+    return this.request("/auth/account", {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getChildren(): Promise<ApiResponse<DbChildProfile[]>> {
     return this.request("/children");
   }
 
-  async createChild(data: any) {
+  async createChild(data: unknown) {
     return this.request("/children", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  // Admin endpoints
+  async getLessons(
+    childId: string,
+    level = 1,
+  ): Promise<ApiResponse<{ lessons: LessonWithStatus[] }>> {
+    return this.request(`/lessons?childId=${childId}&level=${level}`);
+  }
+
+  async getLessonById(
+    lessonId: number,
+    childId: string,
+  ): Promise<ApiResponse<{ lesson: LessonWithScenes }>> {
+    return this.request(`/lessons/${lessonId}?childId=${childId}`);
+  }
+
+  async saveLessonProgress(
+    childId: string,
+    lessonId: number,
+    data: {
+      current_scene_index?: number;
+      completed_scenes?: number[];
+      quiz_score?: number;
+      attempts?: number;
+    },
+  ): Promise<ApiResponse<null>> {
+    return this.request(`/children/${childId}/lessons/${lessonId}/progress`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async completeLesson(
+    childId: string,
+    lessonId: number,
+    quizScore: number,
+  ): Promise<
+    ApiResponse<{ badge_name: string | null; next_lesson_id: number | null }>
+  > {
+    return this.request(`/children/${childId}/lessons/${lessonId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ quiz_score: quizScore }),
+    });
+  }
+
   async getDashboard(): Promise<ApiResponse<DashboardStats>> {
     return this.request("/admin/dashboard");
   }

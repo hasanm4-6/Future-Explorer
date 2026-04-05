@@ -1,73 +1,102 @@
-# Welcome to your Lovable project
+# Future Explorer Frontend
 
-## Project info
+This is the React frontend for Future Explorer, a parent-facing learning platform for managing child profiles, lessons, progress, downloads, privacy controls, and account settings.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## What's in the app
 
-## How can I edit this code?
+- Marketing and public pages: landing page, pricing, privacy, and privacy summary
+- Authentication flow for parents
+- Protected parent experience: dashboard, child profile creation, lesson map, lesson detail, downloads, settings, and data management
+- Parent account actions: profile updates, password changes, logout, and account deletion
+- Teacher dashboard route
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- React 18
+- TypeScript
+- Vite
+- React Router
+- TanStack Query
+- Tailwind CSS
+- shadcn/ui
+- Framer Motion
+- Vitest
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Local Development
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+
+- npm
+- The backend running locally on `http://localhost:5000`
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### Start the frontend
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+cd frontend
+npm install
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The Vite dev server runs on `http://localhost:8080`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+During local development, requests to `/api/*` are proxied to `http://localhost:5000` through [vite.config.ts](/d:/Future%20Explorer/code/frontend/vite.config.ts).
 
-**Use GitHub Codespaces**
+## Available Scripts
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `npm run dev` starts the Vite development server
+- `npm run build` creates a production build
+- `npm run build:dev` builds using development mode
+- `npm run preview` previews the production build locally
+- `npm run lint` runs ESLint
+- `npm run test` runs Vitest once
+- `npm run test:watch` runs Vitest in watch mode
 
-## What technologies are used for this project?
+## Project Structure
 
-This project is built with:
+- [src/App.tsx](/d:/Future%20Explorer/code/frontend/src/App.tsx): app routes and top-level providers
+- [src/pages](/d:/Future%20Explorer/code/frontend/src/pages): route-level screens
+- [src/components](/d:/Future%20Explorer/code/frontend/src/components): shared UI and layout components
+- [src/contexts](/d:/Future%20Explorer/code/frontend/src/contexts): auth context provider
+- [src/hooks](/d:/Future%20Explorer/code/frontend/src/hooks): reusable hooks
+- [src/lib](/d:/Future%20Explorer/code/frontend/src/lib): API client, auth/session helpers, audit, utilities
+- [src/types](/d:/Future%20Explorer/code/frontend/src/types): shared TypeScript types
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Main Routes
 
-## How can I deploy this project?
+- `/` root route that resolves to the landing page or dashboard depending on auth state
+- `/login` public auth flow
+- `/pricing` public pricing page
+- `/dashboard` protected parent dashboard
+- `/create-child` protected child profile setup
+- `/lessons` protected lesson map
+- `/lesson/:id` protected lesson detail
+- `/downloads` protected downloads page
+- `/settings` protected account settings
+- `/data-management` protected data management page
+- `/teacher` protected teacher dashboard
+- `/privacy` public privacy page
+- `/privacy-summary` public privacy summary page
+- `/parental-consent` parental consent flow
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## Backend Integration
 
-## Can I connect a custom domain to my Lovable project?
+- The frontend talks to the backend through relative `/api` requests
+- Authentication is cookie-based
+- Parent profile, password, logout, and account deletion use backend auth endpoints
+- Lesson and child-profile data are served through the backend, which connects to Supabase
 
-Yes, you can!
+## Production Notes
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- The app builds into `frontend/dist`
+- [vercel.json](/d:/Future%20Explorer/code/frontend/vercel.json) rewrites `/api/*` to the deployed backend and sends all other routes to `index.html`
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Verification
+
+Useful checks while working:
+
+```sh
+npm run lint
+npm run test
+npm run build
+```

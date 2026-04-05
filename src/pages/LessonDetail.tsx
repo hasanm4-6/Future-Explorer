@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -14,15 +15,16 @@ import {
   Volume2,
   VolumeX,
   Lock,
-  Unlock,
   Trophy,
   Zap,
+  Loader2,
+  AlertCircle,
+  RotateCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/layout/Navbar";
 import { api } from "@/lib/api";
-import { sessionManager } from "@/lib/session";
-import { Progress } from "@/components/ui/progress";
+import type { LessonScene } from "@/types";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -33,230 +35,262 @@ const fadeUp = {
   }),
 };
 
-const learningChunks = [
-  {
-    id: 1,
-    title: "Meet Robi!",
-    text: "Robi is a friendly robot who needs YOUR help to understand the world.",
-    shortText: "Help Robi learn!",
-    icon: "🤖",
-    duration: "2 min",
-    completed: false,
-    locked: false,
-  },
-  {
-    id: 2,
-    title: "What Does Robi See?",
-    text: "Robi looks at pictures and tries to guess what's in them.",
-    shortText: "Robi sees pictures!",
-    icon: "👁️",
-    duration: "2 min",
-    completed: false,
-    locked: true,
-  },
-  {
-    id: 3,
-    title: "Patterns are Key",
-    text: "Just like you learn letters, Robi learns by finding patterns.",
-    shortText: "Patterns help Robi!",
-    icon: "🔍",
-    duration: "2 min",
-    completed: false,
-    locked: true,
-  },
-  {
-    id: 4,
-    title: "Let's Practice!",
-    text: "Time to help Robi practice what we've learned.",
-    shortText: "Practice with Robi!",
-    icon: "⭐",
-    duration: "1 min",
-    completed: false,
-    locked: true,
-  },
-];
-
-const quizQuestion = {
-  question: "How does an AI learn new things?",
-  options: [
-    {
-      text: "By reading books",
-      correct: false,
-      hint: "Think about what computers do best — they look at lots of examples!",
-    },
-    { text: "By finding patterns in examples", correct: true, hint: "" },
-    {
-      text: "By asking other robots",
-      correct: false,
-      hint: "AI doesn't talk to other robots. It learns from data and patterns.",
-    },
-    {
-      text: "By magic!",
-      correct: false,
-      hint: "It might seem like magic, but AI uses math and patterns!",
-    },
-  ],
-};
-
 const MASTERY_THRESHOLD = 80;
+const AUTOSAVE_DEBOUNCE_MS = 2000;
 
-// Mock user and child IDs - in production, these would come from auth/context
-const mockUserId = "user123";
-const mockChildId = "child123";
-
+// ── Component ─────────────────────────────────────────────────────────────────
 const LessonDetail = () => {
-  const { id } = useParams();
-  const [currentChunk, setCurrentChunk] = useState(0);
-  const [showQuiz, setShowQuiz] = useState(false);
-  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-  const [showResult, setShowResult] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [showHint, setShowHint] = useState(false);
+  const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const childId = searchParams.get("childId") ?? "";
+  const lessonId = parseInt(id ?? "1", 10);
+
+  // ── Fetch lesson + scenes ──────────────────────────────────────────────────
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["lesson", lessonId, childId],
+    queryFn: () => api.getLessonById(lessonId, childId),
+    enabled: !!childId && !isNaN(lessonId),
+  });
+
+  const lesson = data?.data?.lesson;
+  const contentScenes: LessonScene[] =
+    lesson?.scenes.filter((s) => s.type === "content") ?? [];
+  const quizScene: LessonScene | undefined = lesson?.scenes.find(
+    (s) => s.type === "quiz",
+  );
+
+  // ── Local state ────────────────────────────────────────────────────────────
+  const [completedScenes, setCompletedScenes] = useState<number[]>([]);
+  const [currentScene, setCurrentScene] = useState(0);
   const [xp, setXp] = useState(0);
   const [streak, setStreak] = useState(0);
+
+  // Quiz state — selectedAnswer is NEVER auto-cleared; only reset on explicit retry
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [showResult, setShowResult] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+
+  // Completion state
+  const [isComplete, setIsComplete] = useState(false);
+  const [earnedBadge, setEarnedBadge] = useState<string | null>(null);
+  const [nextLessonId, setNextLessonId] = useState<number | null>(null);
+
+  // Accessibility
   const [isTextToSpeechEnabled, setIsTextToSpeechEnabled] = useState(false);
   const [isDyslexiaMode, setIsDyslexiaMode] = useState(false);
-  const [chunks, setChunks] = useState(learningChunks);
+
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Track lesson activity when component mounts
+  // ── Hydrate state from saved progress ─────────────────────────────────────
   useEffect(() => {
-    // api.trackLessonActivity(mockUserId, mockChildId, true);
-
-    // Start autosave for this lesson
-    const lessonId = id || "unknown";
-    sessionManager.startAutosave(lessonId);
-
-    // Check for existing progress to recover
-    const recoveredProgress = sessionManager.recoverLessonProgress(lessonId);
-    if (recoveredProgress) {
-      console.log("[Lesson] Recovered progress:", recoveredProgress);
-      // Type assertion to handle extended progress properties
-      const extendedProgress = recoveredProgress as any;
-      setCurrentChunk(extendedProgress.currentChunk || 0);
-      setShowQuiz(recoveredProgress.showQuiz);
-      setAttempts(recoveredProgress.attempts);
-      setXp(extendedProgress.xp || 0);
-      setStreak(extendedProgress.streak || 0);
-      if (extendedProgress.selectedAnswer !== null) {
-        setSelectedAnswer(extendedProgress.selectedAnswer);
-      }
-      if (extendedProgress.chunks) {
-        setChunks(extendedProgress.chunks);
-      }
+    if (!lesson) return;
+    if (lesson.completed_scenes.length > 0) {
+      setCompletedScenes(lesson.completed_scenes);
+      setCurrentScene(
+        Math.min(lesson.current_scene_index, contentScenes.length - 1),
+      );
     }
+  }, [lesson]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Mutations ──────────────────────────────────────────────────────────────
+  const saveProgressMutation = useMutation({
+    mutationFn: (vars: {
+      current_scene_index: number;
+      completed_scenes: number[];
+      attempts?: number;
+    }) => api.saveLessonProgress(childId, lessonId, vars),
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: (quizScore: number) =>
+      api.completeLesson(childId, lessonId, quizScore),
+    onSuccess: (res) => {
+      // Store badge + next lesson
+      setEarnedBadge(res.data?.badge_name ?? null);
+      setNextLessonId(res.data?.next_lesson_id ?? null);
+
+      // Re-fetch both lesson list (progress %) AND children (XP/streak/badges)
+      queryClient.invalidateQueries({ queryKey: ["lessons", childId] });
+      queryClient.invalidateQueries({ queryKey: ["children"] });
+    },
+  });
+
+  // ── Debounced autosave ─────────────────────────────────────────────────────
+  const scheduleAutosave = useCallback(
+    (sceneIndex: number, done: number[], att: number) => {
+      if (!childId) return;
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = setTimeout(() => {
+        saveProgressMutation.mutate({
+          current_scene_index: sceneIndex,
+          completed_scenes: done,
+          attempts: att,
+        });
+      }, AUTOSAVE_DEBOUNCE_MS);
+    },
+    [childId, saveProgressMutation],
+  );
+
+  useEffect(() => {
     return () => {
-      // Cleanup autosave when component unmounts
-      sessionManager.stopAutosave(lessonId);
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [id]);
+  }, []);
 
-  // Track lesson completion when mastery is achieved
-  useEffect(() => {
-    if (isComplete) {
-      // api.updateLessonProgress(mockUserId, mockChildId, {
-      //   lessonsCompleted: 1,
-      //   achievements: ["Smart Helper Badge"],
-      //   weeklyMinutes: 5,
-      //   currentMission: "What is AI?",
-      // });
-
-      // Clear autosave data for completed lesson
-      const lessonId = id || "unknown";
-      sessionManager.clearAutosave(lessonId);
-    }
-  }, [isComplete, id]);
-
-  // Text-to-speech functionality
-  const speakText = (text: string) => {
-    if (!isTextToSpeechEnabled || !window.speechSynthesis) return;
-
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1.1;
-    utterance.volume = 0.8;
-    speechRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const toggleTextToSpeech = () => {
-    setIsTextToSpeechEnabled(!isTextToSpeechEnabled);
-    if (!isTextToSpeechEnabled) {
+  // ── Text-to-speech ─────────────────────────────────────────────────────────
+  const speakText = useCallback(
+    (text: string) => {
+      if (!isTextToSpeechEnabled || !window.speechSynthesis) return;
       window.speechSynthesis.cancel();
-    }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1.1;
+      utterance.volume = 0.8;
+      speechRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+    },
+    [isTextToSpeechEnabled],
+  );
+
+  const toggleTTS = () => {
+    setIsTextToSpeechEnabled((prev) => {
+      if (prev) window.speechSynthesis?.cancel();
+      return !prev;
+    });
   };
 
-  const completeChunk = (chunkId: number) => {
-    setChunks((prev) =>
-      prev.map((chunk) =>
-        chunk.id === chunkId
-          ? { ...chunk, completed: true }
-          : chunk.id === chunkId + 1
-            ? { ...chunk, locked: false }
-            : chunk,
-      ),
-    );
+  // ── Scene actions ──────────────────────────────────────────────────────────
+  const completeScene = (sceneOrderIndex: number) => {
+    const updated = completedScenes.includes(sceneOrderIndex)
+      ? completedScenes
+      : [...completedScenes, sceneOrderIndex];
+
+    setCompletedScenes(updated);
     setXp((prev) => prev + 25);
     setStreak((prev) => prev + 1);
 
-    // Auto-advance to next chunk if available
-    const nextChunk = chunks.find((c) => c.id === chunkId + 1);
-    if (nextChunk && !nextChunk.locked) {
-      setTimeout(() => setCurrentChunk(chunkId), 500);
+    const nextIndex = currentScene + 1;
+    if (nextIndex < contentScenes.length) {
+      setTimeout(() => setCurrentScene(nextIndex), 400);
     }
+
+    scheduleAutosave(
+      nextIndex < contentScenes.length ? nextIndex : currentScene,
+      updated,
+      attempts,
+    );
   };
 
-  const masteryScore =
-    selectedAnswer !== null && quizQuestion.options[selectedAnswer]?.correct
-      ? 100
-      : Math.min(60, attempts * 20);
+  const isSceneCompleted = (scene: LessonScene) =>
+    completedScenes.includes(scene.order_index);
 
+  const isSceneLocked = (index: number) => {
+    if (index === 0) return false;
+    return !completedScenes.includes(
+      contentScenes[index - 1]?.order_index ?? -1,
+    );
+  };
+
+  const allScenesComplete = contentScenes.every((s) =>
+    completedScenes.includes(s.order_index),
+  );
+
+  // ── Quiz actions ───────────────────────────────────────────────────────────
+  const quizOptions = quizScene?.quiz_options ?? [];
+  const isAnswerCorrect =
+    selectedAnswer !== null && (quizOptions[selectedAnswer]?.is_correct ?? false);
+
+  /**
+   * Pick an answer. The selection is NEVER auto-cleared — the child must
+   * explicitly click "Try Again" to reset, which prevents the race condition
+   * where the "Complete Mission" button disappears after 1.5 s.
+   */
   const handleAnswer = (i: number) => {
+    // Don't allow re-selection after a correct answer is locked in
+    if (isAnswerCorrect) return;
+    // Don't allow re-selection while the wrong-answer feedback is showing
+    if (showResult && !isAnswerCorrect) return;
+
+    const newAttempts = attempts + 1;
     setSelectedAnswer(i);
     setShowResult(true);
-    setAttempts((a) => a + 1);
+    setAttempts(newAttempts);
     setShowHint(false);
 
-    // Instant feedback with XP and streak
-    if (quizQuestion.options[i].correct) {
+    if (quizOptions[i]?.is_correct) {
+      // Correct — reward XP + streak, keep selection visible
       setXp((prev) => prev + 50);
       setStreak((prev) => prev + 1);
-      // Show success feedback immediately
-      setTimeout(() => {
-        setShowResult(false);
-        setSelectedAnswer(null);
-      }, 1500);
     } else {
-      setStreak(0); // Reset streak on wrong answer
+      // Wrong — reset streak, show hint after a short delay
+      setStreak(0);
+      setTimeout(() => setShowHint(true), 600);
     }
+
+    scheduleAutosave(currentScene, completedScenes, newAttempts);
   };
+
+  // Mastery score: 100 if correct, otherwise decays with each wrong attempt
+  const masteryScore = isAnswerCorrect
+    ? 100
+    : Math.max(0, 100 - attempts * 20);
 
   const handleComplete = () => {
-    // Check mastery threshold before completing
-    if (masteryScore >= MASTERY_THRESHOLD) {
-      setIsComplete(true);
-    } else {
-      // Show mastery not achieved message and allow retry
-      setShowResult(false);
-      setSelectedAnswer(null);
-      setShowHint(false);
-    }
+    if (!isAnswerCorrect) return;
+    if (masteryScore < MASTERY_THRESHOLD) return;
+    completeMutation.mutate(masteryScore, {
+      onSuccess: () => setIsComplete(true),
+    });
   };
 
+  /** Reset quiz so the child can pick again after a wrong answer. */
   const handleRetry = () => {
     setSelectedAnswer(null);
     setShowResult(false);
     setShowHint(false);
   };
 
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (isLoading || !lesson) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 py-16 text-center">
+          <AlertCircle className="mx-auto mb-4 h-10 w-10 text-destructive" />
+          <h2 className="font-display text-xl font-bold">Could not load lesson</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {(error as Error)?.message ?? "Please try again later."}
+          </p>
+          <Link to={`/lessons?childId=${childId}`} className="mt-4 inline-block">
+            <Button variant="explorer-outline">Back to Map</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      {/* Celebration overlay */}
+      {/* ── Celebration overlay ─────────────────────────────────────────────── */}
       <AnimatePresence>
         {isComplete && (
           <motion.div
@@ -274,20 +308,21 @@ const LessonDetail = () => {
               <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-gold animate-celebrate">
                 <PartyPopper className="h-10 w-10 text-accent-foreground" />
               </div>
+
               <h2 className="mb-2 font-display text-3xl font-bold text-gradient-coral">
                 Mission Complete! 🎉
               </h2>
-              <p className="mb-2 text-muted-foreground">
-                Amazing job, Explorer! You've earned a new badge!
+              <p className="mb-4 text-muted-foreground">
+                Amazing job, Explorer! You&apos;ve earned a new badge!
               </p>
 
-              {/* Mastery Bar */}
+              {/* Mastery bar */}
               <div className="mb-4 rounded-xl bg-muted p-3">
                 <div className="mb-1 flex items-center justify-between text-xs font-semibold">
                   <span className="text-muted-foreground">Mastery</span>
                   <span className="text-explorer-green">100%</span>
                 </div>
-                <div className="h-3 overflow-hidden rounded-full bg-muted">
+                <div className="h-3 overflow-hidden rounded-full bg-border">
                   <motion.div
                     className="h-full rounded-full bg-gradient-green"
                     initial={{ width: 0 }}
@@ -297,23 +332,49 @@ const LessonDetail = () => {
                 </div>
               </div>
 
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-accent/30 px-4 py-2">
-                <Star className="h-5 w-5 text-explorer-gold" />
-                <span className="font-display font-bold">
-                  Smart Helper Badge
-                </span>
-              </div>
+              {/* Attempts summary */}
+              <p className="mb-3 text-xs text-muted-foreground">
+                Completed in{" "}
+                <span className="font-bold text-foreground">{attempts}</span>{" "}
+                {attempts === 1 ? "attempt" : "attempts"}
+                {" · "}
+                <span className="font-bold text-explorer-gold">+{xp} XP earned</span>
+              </p>
+
+              {earnedBadge && (
+                <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-accent/30 px-4 py-2">
+                  <Star className="h-5 w-5 text-explorer-gold" />
+                  <span className="font-display font-bold">{earnedBadge}</span>
+                </div>
+              )}
+
               <div className="flex gap-3">
-                <Link to="/lessons" className="flex-1">
+                <Link to={`/lessons?childId=${childId}`} className="flex-1">
                   <Button variant="explorer-outline" className="w-full">
-                    Back to Map
+                    <Trophy className="h-4 w-4" /> Back to Map
                   </Button>
                 </Link>
-                <Link to="/lessons" className="flex-1">
-                  <Button variant="explorer" className="w-full">
-                    Next Mission <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
+
+                {/* Navigate directly to next lesson if one exists */}
+                {nextLessonId ? (
+                  <button
+                    type="button"
+                    className="flex-1"
+                    onClick={() =>
+                      navigate(`/lesson/${nextLessonId}?childId=${childId}`)
+                    }
+                  >
+                    <Button variant="explorer" className="w-full">
+                      Next Mission <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </button>
+                ) : (
+                  <Link to={`/lessons?childId=${childId}`} className="flex-1">
+                    <Button variant="explorer" className="w-full">
+                      View Map <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                )}
               </div>
             </motion.div>
           </motion.div>
@@ -321,37 +382,35 @@ const LessonDetail = () => {
       </AnimatePresence>
 
       <div className="container mx-auto max-w-3xl px-4 py-8">
+        {/* Back + autosave indicator */}
         <div className="mb-4 flex items-center justify-between">
           <Link
-            to="/lessons"
+            to={`/lessons?childId=${childId}`}
             className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" /> Back to Explorer Map
           </Link>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Save className="h-3.5 w-3.5" />
-            <span>Progress saved</span>
+            <span>
+              {saveProgressMutation.isPending ? "Saving…" : "Progress saved"}
+            </span>
           </div>
         </div>
 
-        {/* Segment indicator */}
-        <div
-          className="mb-6 flex items-center gap-2"
-          data-current-chunk={currentChunk}
-          data-quiz-active={showQuiz}
-          data-attempts={attempts}
-        >
-          {chunks.map((chunk, i) => {
-            const active = i === currentChunk && !showQuiz;
-            const completed = chunk.completed;
+        {/* Scene progress bar */}
+        <div className="mb-6 flex items-center gap-2">
+          {contentScenes.map((scene, i) => {
+            const active = i === currentScene && !allScenesComplete;
+            const done = isSceneCompleted(scene);
             return (
               <div
-                key={chunk.id}
+                key={scene.id}
                 className="flex flex-1 flex-col items-center gap-1"
               >
                 <div
                   className={`h-1.5 w-full rounded-full transition-colors ${
-                    completed
+                    done
                       ? "bg-explorer-green"
                       : active
                         ? "bg-gradient-coral"
@@ -359,18 +418,27 @@ const LessonDetail = () => {
                   }`}
                 />
                 <span className="text-xs text-muted-foreground">
-                  {chunk.icon}
+                  {scene.icon}
                 </span>
               </div>
             );
           })}
-          <span className="text-xs text-muted-foreground ml-2">~7 min</span>
+          <span className="ml-2 text-xs text-muted-foreground">~7 min</span>
         </div>
 
-        {/* Accessibility Controls */}
+        {/* Lesson title */}
+        <div className="mb-4">
+          <h1 className="font-display text-2xl font-bold">
+            {lesson.icon} {lesson.title}
+          </h1>
+          <p className="text-sm text-muted-foreground">{lesson.description}</p>
+        </div>
+
+        {/* Accessibility + XP row */}
         <div className="mb-6 flex flex-wrap gap-3">
           <button
-            onClick={toggleTextToSpeech}
+            type="button"
+            onClick={toggleTTS}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
               isTextToSpeechEnabled
                 ? "bg-explorer-blue text-white"
@@ -391,24 +459,20 @@ const LessonDetail = () => {
           </button>
 
           <button
-            onClick={() => setIsDyslexiaMode(!isDyslexiaMode)}
+            type="button"
+            onClick={() => setIsDyslexiaMode((p) => !p)}
             className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
               isDyslexiaMode
                 ? "bg-explorer-gold text-accent-foreground"
                 : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
-            aria-label={
-              isDyslexiaMode
-                ? "Disable dyslexia friendly mode"
-                : "Enable dyslexia friendly mode"
-            }
+            aria-label={isDyslexiaMode ? "Disable easy read" : "Enable easy read"}
           >
             <span className="text-base">📖</span>
             {isDyslexiaMode ? "Easy Read On" : "Easy Read Off"}
           </button>
 
-          {/* XP and Streak Display */}
-          <div className="flex items-center gap-4 ml-auto">
+          <div className="ml-auto flex items-center gap-3">
             <div className="flex items-center gap-2 rounded-full bg-accent/30 px-3 py-1">
               <Zap className="h-4 w-4 text-explorer-gold" />
               <span className="font-bold text-sm">{xp} XP</span>
@@ -422,21 +486,23 @@ const LessonDetail = () => {
           </div>
         </div>
 
-        {/* Video Player */}
-        <motion.div className="mb-8 flex aspect-video items-center justify-center rounded-2xl bg-gradient-blue shadow-card">
-          {/* Learning Chunks */}
-          <div className="mb-8">
-            <h2 className="mb-4 font-display text-xl font-bold">
-              Learning Adventure
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2">
-              {chunks.map((chunk, index) => (
+        {/* Learning chunks */}
+        <div className="mb-8">
+          <h2 className="mb-4 font-display text-xl font-bold">
+            Learning Adventure
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            {contentScenes.map((scene, index) => {
+              const done = isSceneCompleted(scene);
+              const locked = isSceneLocked(index);
+
+              return (
                 <motion.div
-                  key={chunk.id}
+                  key={scene.id}
                   className={`rounded-2xl bg-card p-6 shadow-card border-2 transition-all ${
-                    chunk.completed
+                    done
                       ? "border-explorer-green bg-explorer-green/5"
-                      : chunk.locked
+                      : locked
                         ? "border-muted opacity-60"
                         : "border-border/50 hover:border-explorer-coral hover:shadow-lg cursor-pointer"
                   }`}
@@ -444,22 +510,22 @@ const LessonDetail = () => {
                   animate="visible"
                   variants={fadeUp}
                   custom={index + 1}
-                  onClick={() => !chunk.locked && setCurrentChunk(index)}
+                  onClick={() => !locked && setCurrentScene(index)}
                 >
                   <div className="mb-4">
                     <div className="flex items-center gap-3 mb-2">
-                      <span className="text-2xl">{chunk.icon}</span>
+                      <span className="text-2xl">{scene.icon}</span>
                       <h3
                         className={`font-display text-lg font-semibold text-foreground ${
                           isDyslexiaMode ? "font-dyslexia" : ""
                         }`}
                       >
-                        {chunk.title}
+                        {scene.title}
                       </h3>
-                      {chunk.completed && (
+                      {done && (
                         <CheckCircle className="h-5 w-5 text-explorer-green ml-auto" />
                       )}
-                      {chunk.locked && (
+                      {locked && (
                         <Lock className="h-5 w-5 text-muted-foreground ml-auto" />
                       )}
                     </div>
@@ -468,33 +534,35 @@ const LessonDetail = () => {
                         isDyslexiaMode ? "font-dyslexia leading-relaxed" : ""
                       }`}
                     >
-                      {chunk.shortText}
+                      {scene.content}
                     </p>
                   </div>
+
                   <div className="flex justify-between items-center">
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!chunk.locked && !chunk.completed) {
-                          completeChunk(chunk.id);
-                          speakText(chunk.title + ". " + chunk.text);
+                        if (!locked && !done) {
+                          completeScene(scene.order_index);
+                          speakText(`${scene.title}. ${scene.content}`);
                         }
                       }}
-                      disabled={chunk.locked || chunk.completed}
+                      disabled={locked || done}
                       className={`text-sm font-bold uppercase tracking-wider transition-all rounded-lg px-3 py-2 min-h-[44px] ${
-                        chunk.completed
+                        done
                           ? "text-explorer-green bg-explorer-green/10"
-                          : chunk.locked
+                          : locked
                             ? "text-muted-foreground bg-muted cursor-not-allowed"
                             : "text-explorer-coral bg-explorer-coral/10 hover:bg-explorer-coral/20"
                       }`}
-                      aria-label={`Learning chunk ${index + 1}: ${chunk.title}`}
+                      aria-label={`Scene ${index + 1}: ${scene.title}`}
                     >
-                      {chunk.completed ? (
+                      {done ? (
                         <span className="flex items-center gap-2">
                           <CheckCircle className="h-4 w-4" /> Done
                         </span>
-                      ) : chunk.locked ? (
+                      ) : locked ? (
                         <span className="flex items-center gap-2">
                           <Lock className="h-4 w-4" /> Locked
                         </span>
@@ -504,179 +572,197 @@ const LessonDetail = () => {
                         </span>
                       )}
                     </button>
-                    <span className="text-xs text-muted-foreground">
-                      {chunk.duration}
-                    </span>
+                    <span className="text-xs text-muted-foreground">2 min</span>
                   </div>
                 </motion.div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
-            {/* Quiz Section */}
-            <AnimatePresence>
-              {chunks[3]?.completed && (
-                <motion.div
-                  className="max-w-3xl mx-auto"
-                  initial="hidden"
-                  animate="visible"
-                  variants={fadeUp}
-                  custom={1}
-                >
-                  <div className="rounded-2xl bg-card p-6 shadow-card">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="text-2xl">🎯</span>
+          {/* ── Quiz — shown after all content scenes are done ─────────────── */}
+          <AnimatePresence>
+            {allScenesComplete && quizScene && (
+              <motion.div
+                className="mt-6"
+                initial="hidden"
+                animate="visible"
+                variants={fadeUp}
+                custom={1}
+              >
+                <div className="rounded-2xl bg-card p-6 shadow-card">
+                  {/* Quiz header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{quizScene.icon}</span>
                       <h2 className="font-display text-xl font-bold">
-                        Quick Quiz!
+                        {quizScene.title}
                       </h2>
                     </div>
-                    <p
-                      className={`text-sm text-muted-foreground mb-4 ${
-                        isDyslexiaMode ? "font-dyslexia leading-relaxed" : ""
-                      }`}
-                    >
-                      Let's see what you've learned about Robi!
-                    </p>
-                    <div className="space-y-4">
-                      {quizQuestion.options.map((opt, i) => (
+                    {/* Attempts counter — always visible once the first attempt is made */}
+                    {attempts > 0 && (
+                      <span className="rounded-full bg-muted px-3 py-1 text-xs font-bold text-muted-foreground">
+                        Attempt {attempts}
+                      </span>
+                    )}
+                  </div>
+
+                  <p
+                    className={`text-base font-bold mb-4 ${isDyslexiaMode ? "font-dyslexia" : ""}`}
+                  >
+                    {quizScene.quiz_question}
+                  </p>
+
+                  {/* Answer options */}
+                  <div className="space-y-3">
+                    {quizOptions.map((opt, i) => {
+                      const isSelected = selectedAnswer === i;
+                      const isThisCorrect = opt.is_correct;
+
+                      let optClass =
+                        "bg-muted hover:bg-muted/80 cursor-pointer";
+                      if (showResult && isSelected) {
+                        optClass = isThisCorrect
+                          ? "bg-explorer-green/10 ring-2 ring-explorer-green cursor-default"
+                          : "bg-destructive/10 ring-2 ring-destructive cursor-default";
+                      } else if (isAnswerCorrect) {
+                        // Lock all options once correct answer is confirmed
+                        optClass = "bg-muted opacity-50 cursor-default";
+                      }
+
+                      return (
                         <button
                           key={i}
+                          type="button"
                           onClick={() => handleAnswer(i)}
-                          disabled={showResult}
-                          className={`w-full flex items-center gap-3 rounded-xl p-4 text-left transition-all min-h-[52px] ${
-                            showResult && selectedAnswer === i
-                              ? opt.correct
-                                ? "bg-explorer-green/10 ring-2 ring-explorer-green"
-                                : "bg-destructive/10 ring-2 ring-destructive"
-                              : "bg-muted hover:bg-muted/80"
-                          }`}
-                          aria-label={`Quiz option ${i + 1}: ${opt.text}`}
+                          disabled={isAnswerCorrect}
+                          className={`w-full flex items-center gap-3 rounded-xl p-4 text-left transition-all min-h-[52px] ${optClass}`}
+                          aria-label={`Option ${i + 1}: ${opt.text}`}
                         >
-                          <span className="flex items-center gap-3">
-                            {showResult && selectedAnswer === i ? (
-                              opt.correct ? (
-                                <CheckCircle className="h-5 w-5 text-explorer-green" />
-                              ) : (
-                                <XCircle className="h-5 w-5 text-destructive" />
-                              )
-                            ) : null}
-                            <span
-                              className={`font-body font-semibold ${
-                                isDyslexiaMode ? "font-dyslexia" : ""
-                              }`}
-                            >
-                              {opt.text}
-                            </span>
+                          {showResult && isSelected ? (
+                            isThisCorrect ? (
+                              <CheckCircle className="h-5 w-5 text-explorer-green shrink-0" />
+                            ) : (
+                              <XCircle className="h-5 w-5 text-destructive shrink-0" />
+                            )
+                          ) : (
+                            <span className="h-5 w-5 shrink-0 rounded-full border-2 border-border/60" />
+                          )}
+                          <span
+                            className={`font-body font-semibold ${isDyslexiaMode ? "font-dyslexia" : ""}`}
+                          >
+                            {opt.text}
                           </span>
                         </button>
-                      ))}
-                    </div>
+                      );
+                    })}
+                  </div>
 
-                    {/* Feedback */}
+                  {/* Feedback */}
+                  <AnimatePresence mode="wait">
                     {showResult && (
                       <motion.div
+                        key={String(isAnswerCorrect)}
                         className="mt-4"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
                       >
-                        {selectedAnswer !== null &&
-                        quizQuestion.options[selectedAnswer]?.correct ? (
-                          <motion.div
-                            className="flex items-center gap-2 text-explorer-green"
-                            initial={{ scale: 0.8, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                          >
-                            <CheckCircle className="h-5 w-5 text-explorer-green" />
+                        {isAnswerCorrect ? (
+                          <div className="flex items-center gap-2 rounded-xl bg-explorer-green/10 p-3 text-explorer-green">
+                            <CheckCircle className="h-5 w-5 shrink-0" />
                             <span className="font-bold">
-                              Awesome! That's correct! +50 XP
+                              Awesome! That&apos;s correct! +50 XP
                             </span>
-                          </motion.div>
+                          </div>
                         ) : (
                           <div className="space-y-3">
-                            <motion.div
-                              className="flex items-center gap-2 text-destructive"
-                              initial={{ x: -10, opacity: 0 }}
-                              animate={{ x: 0, opacity: 1 }}
-                            >
-                              <XCircle className="h-5 w-5 text-destructive" />
+                            <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-destructive">
+                              <XCircle className="h-5 w-5 shrink-0" />
                               <span className="font-bold">
-                                Not quite right! Try again!
+                                Not quite — give it another try!
                               </span>
-                            </motion.div>
-                            {showHint && (
-                              <motion.div
-                                className="rounded-xl bg-explorer-blue/10 p-3"
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                              >
-                                <p className="text-sm text-muted-foreground mb-2">
-                                  Here's a hint:
-                                </p>
-                                <div className="flex items-start gap-2">
-                                  <Lightbulb className="h-4 w-4 text-explorer-blue mt-0.5 shrink-0" />
-                                  <p
-                                    className={`text-sm text-muted-foreground ${
-                                      isDyslexiaMode
-                                        ? "font-dyslexia leading-relaxed"
-                                        : ""
-                                    }`}
-                                  >
-                                    {selectedAnswer !== null
-                                      ? quizQuestion.options[selectedAnswer]
-                                          ?.hint
-                                      : ""}
-                                  </p>
-                                </div>
-                              </motion.div>
-                            )}
+                            </div>
+                            {showHint &&
+                              selectedAnswer !== null &&
+                              quizOptions[selectedAnswer]?.hint && (
+                                <motion.div
+                                  className="rounded-xl bg-explorer-blue/10 p-3"
+                                  initial={{ opacity: 0, y: 8 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <Lightbulb className="h-4 w-4 text-explorer-blue mt-0.5 shrink-0" />
+                                    <p
+                                      className={`text-sm text-muted-foreground ${
+                                        isDyslexiaMode
+                                          ? "font-dyslexia leading-relaxed"
+                                          : ""
+                                      }`}
+                                    >
+                                      {quizOptions[selectedAnswer].hint}
+                                    </p>
+                                  </div>
+                                </motion.div>
+                              )}
                           </div>
                         )}
                       </motion.div>
                     )}
+                  </AnimatePresence>
 
-                    {/* Action Button */}
-                    <Button
-                      variant={
-                        selectedAnswer !== null &&
-                        quizQuestion.options[selectedAnswer]?.correct
-                          ? "explorer"
-                          : "explorer-outline"
-                      }
-                      size="lg"
-                      className="mt-4 w-full min-h-[52px]"
-                      onClick={() => {
-                        if (
-                          selectedAnswer !== null &&
-                          quizQuestion.options[selectedAnswer]?.correct
-                        ) {
-                          handleComplete();
-                        } else {
-                          handleRetry();
-                        }
-                      }}
-                      aria-label={
-                        selectedAnswer !== null &&
-                        quizQuestion.options[selectedAnswer]?.correct
-                          ? "Complete mission"
-                          : "Try again"
-                      }
-                    >
-                      {selectedAnswer !== null &&
-                      quizQuestion.options[selectedAnswer]?.correct ? (
-                        <>
-                          Complete Mission <PartyPopper className="h-4 w-4" />
-                        </>
-                      ) : (
-                        <>
-                          Try Again <ArrowRight className="h-4 w-4" />
-                        </>
-                      )}
-                    </Button>
+                  {/* Action button */}
+                  <div className="mt-4">
+                    {/* No answer selected yet */}
+                    {selectedAnswer === null && (
+                      <Button
+                        variant="explorer-outline"
+                        size="lg"
+                        className="w-full min-h-[52px] opacity-50 cursor-not-allowed"
+                        disabled
+                      >
+                        Pick an answer above
+                      </Button>
+                    )}
+
+                    {/* Wrong answer selected — allow retry */}
+                    {selectedAnswer !== null && !isAnswerCorrect && (
+                      <Button
+                        variant="explorer-outline"
+                        size="lg"
+                        className="w-full min-h-[52px]"
+                        onClick={handleRetry}
+                      >
+                        <RotateCcw className="h-4 w-4" /> Try Again
+                      </Button>
+                    )}
+
+                    {/* Correct answer selected — complete mission */}
+                    {isAnswerCorrect && (
+                      <Button
+                        variant="explorer"
+                        size="lg"
+                        className="w-full min-h-[52px]"
+                        disabled={completeMutation.isPending}
+                        onClick={handleComplete}
+                      >
+                        {completeMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            Complete Mission{" "}
+                            <PartyPopper className="h-4 w-4" />
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            {/* Continue Button */}
+          {/* Back to map button (visible while still doing scenes) */}
+          {!allScenesComplete && (
             <motion.div
               className="mt-8 text-center"
               initial="hidden"
@@ -684,16 +770,15 @@ const LessonDetail = () => {
               variants={fadeUp}
               custom={2}
             >
-              <Link to="/lessons">
+              <Link to={`/lessons?childId=${childId}`}>
                 <Button variant="explorer-outline" size="lg" className="gap-2">
-                  <Play className="h-4 w-4" />
-                  Continue to Next Mission
-                  <ArrowRight className="h-4 w-4" />
+                  <Trophy className="h-4 w-4" />
+                  Back to Explorer Map
                 </Button>
               </Link>
             </motion.div>
-          </div>
-        </motion.div>
+          )}
+        </div>
       </div>
     </div>
   );

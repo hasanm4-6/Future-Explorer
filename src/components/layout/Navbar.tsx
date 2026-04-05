@@ -1,27 +1,22 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Compass, Menu, X } from "lucide-react";
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { Link, useNavigate } from "react-router-dom";
+import { Compass, Menu, X } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthProvider";
+import { Button } from "@/components/ui/button";
 
 const Navbar = () => {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const location = useLocation();
   const { user, logout } = useAuthContext();
-  const isLoggedIn = [
-    "/dashboard",
-    "/lessons",
-    "/create-child",
-    "/downloads",
-    "/settings",
-  ].some((p) => location.pathname.startsWith(p));
-
-  // const isTeacher = location.pathname.startsWith("/teacher");
 
   const isTeacher = user?.role === "teacher";
   const isParent = user?.role === "parent";
+
+  const handleLogout = async () => {
+    await logout();
+    setMobileOpen(false);
+    navigate("/");
+  };
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border/50 bg-card/80 backdrop-blur-md">
@@ -35,19 +30,18 @@ const Navbar = () => {
           </span>
         </Link>
 
-        {/* Desktop nav */}
         <div className="hidden items-center gap-6 md:flex">
           {isTeacher ? (
             <>
               <Link
                 to="/teacher"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Dashboard
               </Link>
               <Link
                 to="/settings"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Settings
               </Link>
@@ -56,25 +50,25 @@ const Navbar = () => {
             <>
               <Link
                 to="/dashboard"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Dashboard
               </Link>
               <Link
                 to="/lessons"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Lessons
               </Link>
               <Link
                 to="/downloads"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Downloads
               </Link>
               <Link
                 to="/settings"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Settings
               </Link>
@@ -83,19 +77,19 @@ const Navbar = () => {
             <>
               <Link
                 to="/pricing"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Pricing
               </Link>
               <a
                 href="#features"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 Features
               </a>
               <a
                 href="#how-it-works"
-                className="font-body text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="font-body text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
               >
                 How It Works
               </a>
@@ -106,10 +100,7 @@ const Navbar = () => {
         <div className="hidden items-center gap-3 md:flex">
           {user ? (
             <Button
-              onClick={async () => {
-                await logout();
-                navigate("/");
-              }}
+              onClick={handleLogout}
               variant="explorer-outline"
               size="sm"
             >
@@ -131,11 +122,7 @@ const Navbar = () => {
           )}
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="md:hidden"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
+        <button className="md:hidden" onClick={() => setMobileOpen((open) => !open)}>
           {mobileOpen ? (
             <X className="h-6 w-6" />
           ) : (
@@ -144,9 +131,8 @@ const Navbar = () => {
         </button>
       </div>
 
-      {/* Mobile menu */}
       {mobileOpen && (
-        <div className="border-t border-border bg-card p-4 md:hidden animate-slide-up">
+        <div className="animate-slide-up border-t border-border bg-card p-4 md:hidden">
           <div className="flex flex-col gap-3">
             {user ? (
               <>
@@ -178,6 +164,13 @@ const Navbar = () => {
                 >
                   Settings
                 </Link>
+                <Button
+                  variant="explorer-outline"
+                  onClick={handleLogout}
+                  className="w-full"
+                >
+                  Log Out
+                </Button>
               </>
             ) : (
               <>
@@ -188,13 +181,13 @@ const Navbar = () => {
                 >
                   Pricing
                 </Link>
+                <Link to="/login" onClick={() => setMobileOpen(false)}>
+                  <Button variant="explorer" className="w-full">
+                    Get Started
+                  </Button>
+                </Link>
               </>
             )}
-            <Link to="/login" onClick={() => setMobileOpen(false)}>
-              <Button variant="explorer" className="w-full">
-                Get Started
-              </Button>
-            </Link>
           </div>
         </div>
       )}

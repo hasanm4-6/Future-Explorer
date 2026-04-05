@@ -1,7 +1,7 @@
-// hooks/useAuth.ts
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { clearLocalAccountData } from "@/lib/account";
 import { api } from "@/lib/api";
 
 type User = {
@@ -9,58 +9,63 @@ type User = {
   email?: string;
   name?: string;
   role?: string;
+  avatar_url?: string | null;
+  bio?: string | null;
+  phone?: string | null;
+  country?: string | null;
+  last_login?: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  const hasFetchedRef = useRef(false);
 
-  // 🔍 Fetch current user
-  const fetchUser = useCallback(async () => {
-    if (initialized) return;
-    // if (!user) return;
-    console.log("before fetching user");
+  const fetchUser = useCallback(async ({ force = false } = {}) => {
+    if (hasFetchedRef.current && !force) {
+      return user;
+    }
+
+    hasFetchedRef.current = true;
+
     try {
       setLoading(true);
-      const res = await api.profile(); // 👈 you need this endpoint
+      const res = await api.profile();
       setUser(res.user);
-      console.log("after fetching user");
-    } catch (err) {
+      return res.user ?? null;
+    } catch {
       setUser(null);
+      return null;
     } finally {
       setLoading(false);
-      setInitialized(true);
     }
-  }, [initialized]);
+  }, [user]);
 
-  // 🚀 Login
   const login = async (email: string, password: string) => {
     await api.login(email, password);
-
-    // await fetchUser(); // refresh state
-    // await new Promise((res) => setTimeout(res, 0));
-    const res = await api.profile(); // ✅ get the user
+    const res = await api.profile();
     setUser(res.user);
+    hasFetchedRef.current = true;
   };
 
   const signup = async (formData: FormData) => {
     await api.signup(formData);
-
-    // await fetchUser(); // refresh state
-    // await new Promise((res) => setTimeout(res, 0));
-    const res = await api.profile(); // ✅ get the user
+    const res = await api.profile();
     setUser(res.user);
+    hasFetchedRef.current = true;
   };
 
-  // 🚪 Logout
   const logout = async () => {
     await api.logout();
+    clearLocalAccountData();
     setUser(null);
+    hasFetchedRef.current = true;
   };
 
   useEffect(() => {
-    fetchUser();
+    void fetchUser();
   }, [fetchUser]);
 
   return {
@@ -70,6 +75,6 @@ export const useAuth = () => {
     login,
     signup,
     logout,
-    refresh: fetchUser,
+    refresh: () => fetchUser({ force: true }),
   };
 };
