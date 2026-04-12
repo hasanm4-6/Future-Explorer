@@ -112,6 +112,7 @@ export interface DbChildProfile {
   parent_id: string;
   name: string;
   age_band: "6-7" | "8-10" | "11-13";
+  age: number;
   avatar: string;
   learning_level: "beginner" | "intermediate" | "advanced" | null;
   progress: {
@@ -120,6 +121,7 @@ export interface DbChildProfile {
     badges: string[];
     total_xp: number;
     streak_days: number;
+    topics_covered?: string[];
   } | null;
   is_active: boolean;
   created_at: string;

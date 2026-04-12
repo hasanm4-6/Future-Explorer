@@ -98,6 +98,14 @@
     background: linear-gradient(135deg, hsl(150 55% 48%), hsl(170 60% 42%));
   }
 
+  .bg-gradient-purple {
+    background: linear-gradient(135deg, hsl(270 55% 62%), hsl(290 50% 58%));
+  }
+
+  .bg-gradient-pink {
+    background: linear-gradient(135deg, hsl(330 75% 68%), hsl(350 70% 65%));
+  }
+
   .text-gradient-coral {
     background: linear-gradient(135deg, hsl(4 85% 62%), hsl(330 75% 68%));
     -webkit-background-clip: text;

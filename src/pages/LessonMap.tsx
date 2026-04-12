@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Lock,
@@ -18,6 +18,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/layout/Navbar";
 import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
 import type { DbChildProfile, LessonWithStatus } from "@/types";
 
 // ── Status visual config ──────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ const SceneDots = ({
 const LessonMap = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
 
   // ── Step 1: fetch parent's children ───────────────────────────────────────
   const {
@@ -127,7 +129,7 @@ const LessonMap = () => {
     isLoading: childrenLoading,
     isError: childrenError,
   } = useQuery({
-    queryKey: ["children"],
+    queryKey: queryKeys.children.all,
     queryFn: () => api.getChildren(),
     staleTime: 5 * 60 * 1000,
   });
@@ -160,13 +162,27 @@ const LessonMap = () => {
     isError: lessonsError,
     error: lessonsErr,
   } = useQuery({
-    queryKey: ["lessons", activeChild?.id],
+    queryKey: queryKeys.lessons.byChild(activeChild?.id ?? ""),
     queryFn: () => api.getLessons(activeChild!.id, 1),
     enabled: !!activeChild,
     staleTime: 30 * 1000,
   });
 
   const lessons: LessonWithStatus[] = lessonsRes?.data?.lessons ?? [];
+
+  // ── Prefetch: warm cache for the unlocked lesson's detail page ───────────
+  const unlockedLesson = lessons.find((l) => l.status === "unlocked");
+  const unlockedLessonId = unlockedLesson?.id;
+  const activeChildId = activeChild?.id;
+  useEffect(() => {
+    if (unlockedLessonId != null && activeChildId) {
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.lesson.detail(unlockedLessonId, activeChildId),
+        queryFn: () => api.getLessonById(unlockedLessonId, activeChildId),
+        staleTime: 60 * 1000,
+      });
+    }
+  }, [unlockedLessonId, activeChildId, queryClient]);
   const completedCount = lessons.filter((l) => l.status === "completed").length;
   const totalLessons = lessons.length;
   const progressPct =

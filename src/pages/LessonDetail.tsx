@@ -24,6 +24,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/layout/Navbar";
 import { api } from "@/lib/api";
+import { queryKeys } from "@/lib/queryKeys";
 import type { LessonScene } from "@/types";
 
 const fadeUp = {
@@ -50,7 +51,7 @@ const LessonDetail = () => {
 
   // ── Fetch lesson + scenes ──────────────────────────────────────────────────
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["lesson", lessonId, childId],
+    queryKey: queryKeys.lesson.detail(lessonId, childId),
     queryFn: () => api.getLessonById(lessonId, childId),
     enabled: !!childId && !isNaN(lessonId),
   });
@@ -106,6 +107,10 @@ const LessonDetail = () => {
     }) => api.saveLessonProgress(childId, lessonId, vars),
   });
 
+  // Stable ref for mutate — prevents autosave timer from resetting on re-render
+  const saveMutateRef = useRef(saveProgressMutation.mutate);
+  saveMutateRef.current = saveProgressMutation.mutate;
+
   const completeMutation = useMutation({
     mutationFn: (quizScore: number) =>
       api.completeLesson(childId, lessonId, quizScore),
@@ -115,25 +120,25 @@ const LessonDetail = () => {
       setNextLessonId(res.data?.next_lesson_id ?? null);
 
       // Re-fetch both lesson list (progress %) AND children (XP/streak/badges)
-      queryClient.invalidateQueries({ queryKey: ["lessons", childId] });
-      queryClient.invalidateQueries({ queryKey: ["children"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.lessons.byChild(childId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.children.all });
     },
   });
 
-  // ── Debounced autosave ─────────────────────────────────────────────────────
+  // ── Debounced autosave (stable — uses ref to avoid dep on mutation) ────────
   const scheduleAutosave = useCallback(
     (sceneIndex: number, done: number[], att: number) => {
       if (!childId) return;
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
       autosaveTimer.current = setTimeout(() => {
-        saveProgressMutation.mutate({
+        saveMutateRef.current({
           current_scene_index: sceneIndex,
           completed_scenes: done,
           attempts: att,
         });
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-    [childId, saveProgressMutation],
+    [childId],
   );
 
   useEffect(() => {

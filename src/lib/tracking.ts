@@ -16,6 +16,7 @@ type TrackingEvent =
   | "lesson_completed"
   | "quiz_completed"
   | "subscription_started"
+  | "child_profile_created"
   | "preview_mission_clicked"
   | "view_mode_switched";
 
