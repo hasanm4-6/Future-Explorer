@@ -194,6 +194,11 @@ const LessonMap = () => {
   const totalXp = childProgress?.total_xp ?? 0;
   const streakDays = childProgress?.streak_days ?? 0;
 
+  // Achievement badge milestones for display
+  const earnedBadges: string[] = childProgress?.badges ?? [];
+  const achievementBadges = ["Explorer Start", "AI Beginner", "AI Explorer", "Smart Thinker"];
+  const earnedAchievements = achievementBadges.filter((b) => earnedBadges.includes(b));
+
   // Find the index of the first unlocked (active) lesson for ring highlight
   const activeIndex = lessons.findIndex((l) => l.status === "unlocked");
 
@@ -365,6 +370,31 @@ const LessonMap = () => {
               )}
             </div>
           </div>
+
+          {/* Achievement badges row */}
+          {earnedAchievements.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-border/40 pt-4">
+              {earnedAchievements.map((badge) => {
+                const badgeEmoji: Record<string, string> = {
+                  "Explorer Start": "🚀",
+                  "AI Beginner": "🤖",
+                  "AI Explorer": "🏆",
+                  "Smart Thinker": "🧠",
+                };
+                return (
+                  <div
+                    key={badge}
+                    className="flex items-center gap-1.5 rounded-full bg-gradient-gold px-3 py-1"
+                  >
+                    <span className="text-sm">{badgeEmoji[badge]}</span>
+                    <span className="font-display text-xs font-bold text-accent-foreground">
+                      {badge}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
 
         {/* ── Multi-child switcher ───────────────────────────────────────────── */}
@@ -394,160 +424,208 @@ const LessonMap = () => {
         )}
 
         {/* ── Lesson map ─────────────────────────────────────────────────────── */}
-        <div className="relative mx-auto max-w-md">
-          {/* Path line */}
-          <div className="absolute left-1/2 top-0 h-full w-1 -translate-x-1/2 rounded-full bg-border" />
+        {(() => {
+          // ── Layout constants ──────────────────────────────────────────────
+          // SVG viewBox width (logical units). Node x positions are 25% / 75%.
+          const SVG_W = 400;
+          const NODE_LEFT_X = 100;   // 25% of SVG_W
+          const NODE_RIGHT_X = 300;  // 75% of SVG_W
+          const ROW_H = 190;         // px per lesson row
+          const TOTAL_H = lessons.length * ROW_H;
+          const TOTAL_SCENES = 4;
 
-          <div className="relative space-y-8">
-            {lessons.map((lesson, i) => {
-              const config = statusConfig[lesson.status];
-              const isEven = i % 2 === 0;
-              const isActive = i === activeIndex;
-              // How many content scenes has the child done? API gives completed_scenes array
-              const scenesCompleted = lesson.completed_scenes.length;
-              // Total content scenes — we don't have this from the list endpoint,
-              // so show dots only when we know progress exists (4 scenes per lesson)
-              const TOTAL_SCENES = 4;
+          // Node x centre for row i (alternates left / right)
+          const nodeX = (i: number) => (i % 2 === 0 ? NODE_LEFT_X : NODE_RIGHT_X);
+          const nodeY = (i: number) => i * ROW_H + ROW_H / 2;
 
-              return (
-                <motion.div
-                  key={lesson.id}
-                  className={`relative flex items-center gap-4 ${
-                    isEven ? "flex-row" : "flex-row-reverse"
-                  }`}
-                  initial={{ opacity: 0, x: isEven ? -30 : 30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.07, duration: 0.4 }}
-                >
-                  {/* ── Card ─────────────────────────────────────────────── */}
-                  <div className={`flex-1 ${isEven ? "text-right" : "text-left"}`}>
-                    <div
-                      className={[
-                        "inline-block w-full rounded-2xl bg-card p-4 shadow-card transition-all duration-200",
-                        lesson.status !== "locked"
-                          ? "hover:shadow-card-hover hover:-translate-y-0.5"
-                          : "opacity-60",
-                        // Pulsing coral ring on the currently active lesson
-                        isActive
-                          ? "ring-2 ring-explorer-coral ring-offset-2 ring-offset-background"
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
+          return (
+            <div className="relative mx-auto max-w-md">
+
+              {/* ── SVG animated dotted paths ─────────────────────────────── */}
+              <svg
+                viewBox={`0 0 ${SVG_W} ${TOTAL_H}`}
+                width="100%"
+                height={TOTAL_H}
+                preserveAspectRatio="none"
+                className="absolute inset-0 pointer-events-none"
+                aria-hidden="true"
+              >
+                {lessons.slice(0, -1).map((lesson, i) => {
+                  const x1 = nodeX(i);
+                  const y1 = nodeY(i);
+                  const x2 = nodeX(i + 1);
+                  const y2 = nodeY(i + 1);
+                  const midY = (y1 + y2) / 2;
+                  const d = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+
+                  // Completed paths get coral colour; locked/active get muted
+                  const isPathDone = lesson.status === "completed";
+                  const strokeColor = isPathDone
+                    ? "hsl(4 85% 62%)"   // explorer-coral
+                    : "hsl(40 22% 82%)"; // muted border
+
+                  return (
+                    <g key={`path-${lesson.id}`}>
+                      {/* Static base path (slightly wider, low-opacity) */}
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke={strokeColor}
+                        strokeWidth="10"
+                        strokeDasharray="0"
+                        strokeLinecap="round"
+                        opacity="0.18"
+                      />
+                      {/* Animated marching-ants dotted path */}
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke={strokeColor}
+                        strokeWidth="7"
+                        strokeDasharray="14 14"
+                        strokeLinecap="round"
+                        className={isPathDone ? "animate-dash-path" : "animate-dash-path-slow"}
+                        opacity={isPathDone ? 0.85 : 0.45}
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {/* ── Lesson rows ───────────────────────────────────────────── */}
+              <div className="relative">
+                {lessons.map((lesson, i) => {
+                  const config = statusConfig[lesson.status];
+                  const isEven = i % 2 === 0;   // even → node on left
+                  const isActive = i === activeIndex;
+                  const scenesCompleted = lesson.completed_scenes.length;
+
+                  return (
+                    <motion.div
+                      key={lesson.id}
+                      className="relative"
+                      style={{ height: ROW_H }}
+                      initial={{ opacity: 0, x: isEven ? -30 : 30 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.07, duration: 0.4 }}
                     >
-                      {/* Mission label + XP reward */}
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <p className="text-xs text-muted-foreground">
-                          Mission {lesson.order_index}
-                        </p>
-                        {lesson.status !== "completed" && (
-                          <span className="text-xs font-bold text-explorer-gold">
-                            +{lesson.xp_reward ?? 50} XP
-                          </span>
-                        )}
+                      {/* ── Node circle (absolutely placed at 25% or 75%) ── */}
+                      <div
+                        className={[
+                          config.nodeClass,
+                          "absolute top-1/2 z-10 h-14 w-14 -translate-x-1/2 -translate-y-1/2",
+                          isEven ? "left-1/4" : "left-3/4",
+                        ].join(" ")}
+                      >
+                        {config.icon}
                       </div>
 
-                      {/* Title */}
-                      <h3 className="font-display font-bold leading-snug">
-                        {lesson.title}
-                      </h3>
-
-                      {/* Badge chip (completed) */}
-                      {lesson.badge_name && lesson.status === "completed" && (
-                        <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-accent/40 px-2 py-0.5 text-xs font-bold text-accent-foreground">
-                          <Star className="h-3 w-3" /> {lesson.badge_name}
-                        </div>
-                      )}
-
-                      {/* Scene micro-progress (unlocked, visited) */}
-                      {lesson.status === "unlocked" && scenesCompleted > 0 && (
-                        <div className={isEven ? "flex justify-end" : ""}>
-                          <div className={`mt-2 w-full max-w-[120px] ${isEven ? "ml-auto" : ""}`}>
-                            <SceneDots
-                              total={TOTAL_SCENES}
-                              completed={scenesCompleted}
-                            />
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {scenesCompleted}/{TOTAL_SCENES} scenes done
+                      {/* ── Card (on the opposite side from the node) ──────── */}
+                      <div
+                        className={[
+                          "absolute inset-y-3 flex items-stretch",
+                          isEven ? "left-[38%] right-2" : "left-2 right-[38%]",
+                        ].join(" ")}
+                      >
+                        <div
+                          className={[
+                            "w-full rounded-2xl bg-card p-4 shadow-card transition-all duration-200 flex flex-col justify-center",
+                            lesson.status !== "locked"
+                              ? "hover:shadow-card-hover hover:-translate-y-0.5"
+                              : "opacity-60",
+                            isActive
+                              ? "ring-2 ring-explorer-coral ring-offset-2 ring-offset-background"
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                        >
+                          {/* Mission label + XP */}
+                          <div className="flex items-center justify-between gap-1 mb-0.5">
+                            <p className="text-xs text-muted-foreground">
+                              Mission {lesson.order_index}
                             </p>
+                            {lesson.status !== "completed" && (
+                              <span className="text-xs font-bold text-explorer-gold">
+                                +{lesson.xp_reward ?? 10} XP
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Title */}
+                          <h3 className="font-display font-bold leading-snug text-sm">
+                            {lesson.title}
+                          </h3>
+
+                          {/* Badge chip (completed) */}
+                          {lesson.badge_name && lesson.status === "completed" && (
+                            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-accent/40 px-2 py-0.5 text-xs font-bold text-accent-foreground">
+                              <Star className="h-3 w-3" /> {lesson.badge_name}
+                            </div>
+                          )}
+
+                          {/* Scene micro-progress */}
+                          {lesson.status === "unlocked" && scenesCompleted > 0 && (
+                            <div className="mt-1.5">
+                              <SceneDots total={TOTAL_SCENES} completed={scenesCompleted} />
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {scenesCompleted}/{TOTAL_SCENES} scenes
+                              </p>
+                            </div>
+                          )}
+
+                          {/* CTA */}
+                          <div className="mt-2">
+                            {lesson.status === "unlocked" ? (
+                              <Link to={`/lesson/${lesson.id}?childId=${activeChild.id}`}>
+                                <Button variant="explorer" size="sm" className="w-full min-h-[40px] text-xs">
+                                  {scenesCompleted > 0 ? "Continue" : "Start"}
+                                  <ArrowRight className="h-3 w-3" />
+                                </Button>
+                              </Link>
+                            ) : lesson.status === "completed" ? (
+                              <Link to={`/lesson/${lesson.id}?childId=${activeChild.id}`}>
+                                <Button variant="explorer-outline" size="sm" className="w-full min-h-[40px] text-xs">
+                                  Review <CheckCircle className="h-3 w-3" />
+                                </Button>
+                              </Link>
+                            ) : (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Lock className="h-3 w-3 shrink-0" />
+                                <span>Complete {lesson.order_index - 1} first</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
 
-                      {/* CTA */}
-                      {lesson.status === "unlocked" ? (
-                        <Link
-                          to={`/lesson/${lesson.id}?childId=${activeChild.id}`}
-                          className="block mt-2"
-                        >
-                          <Button
-                            variant="explorer"
-                            size="sm"
-                            className="w-full min-h-[44px]"
-                          >
-                            {scenesCompleted > 0 ? "Continue" : "Start Mission"}
-                            <ArrowRight className="h-3 w-3" />
-                          </Button>
-                        </Link>
-                      ) : lesson.status === "completed" ? (
-                        <Link
-                          to={`/lesson/${lesson.id}?childId=${activeChild.id}`}
-                          className="block mt-2"
-                        >
-                          <Button
-                            variant="explorer-outline"
-                            size="sm"
-                            className="w-full min-h-[44px]"
-                          >
-                            Review <CheckCircle className="h-3 w-3" />
-                          </Button>
-                        </Link>
-                      ) : (
-                        <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                          <Lock className="h-3 w-3" />
-                          <span>Complete mission {lesson.order_index - 1} first</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ── Node ─────────────────────────────────────────────── */}
-                  <div className={`${config.nodeClass} z-10 h-14 w-14 shrink-0`}>
-                    {config.icon}
-                  </div>
-
-                  {/* Spacer */}
-                  <div className="flex-1" />
-                </motion.div>
-              );
-            })}
-          </div>
-
-          {/* ── Final goal ────────────────────────────────────────────────── */}
-          <motion.div
-            className="relative mt-10 flex flex-col items-center gap-3"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.7, duration: 0.4 }}
-          >
-            <div
-              className={`flex h-20 w-20 items-center justify-center rounded-full shadow-lg transition-all ${
-                allDone
-                  ? "bg-gradient-gold animate-celebrate"
-                  : "bg-muted opacity-50"
-              }`}
-            >
-              <Compass className="h-10 w-10 text-accent-foreground" />
+              {/* ── Final goal ────────────────────────────────────────────── */}
+              <motion.div
+                className="relative mt-6 flex flex-col items-center gap-3"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.7, duration: 0.4 }}
+              >
+                <div
+                  className={`flex h-20 w-20 items-center justify-center rounded-full shadow-lg transition-all ${
+                    allDone
+                      ? "bg-gradient-gold animate-celebrate"
+                      : "bg-muted opacity-50"
+                  }`}
+                >
+                  <Compass className="h-10 w-10 text-accent-foreground" />
+                </div>
+                <p className={`font-display font-bold ${allDone ? "text-explorer-gold" : "text-muted-foreground"}`}>
+                  {allDone ? "🏆 Level 1 Complete!" : "Level 1 Goal"}
+                </p>
+              </motion.div>
             </div>
-            <p
-              className={`font-display font-bold ${
-                allDone ? "text-explorer-gold" : "text-muted-foreground"
-              }`}
-            >
-              {allDone ? "🏆 Level 1 Complete!" : "Level 1 Goal"}
-            </p>
-          </motion.div>
-        </div>
+          );
+        })()}
       </div>
     </div>
   );

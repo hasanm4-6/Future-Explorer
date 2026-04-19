@@ -159,4 +159,14 @@
   .animation-delay-600 {
     animation-delay: 600ms;
   }
+
+  @keyframes dashMove {
+    to { stroke-dashoffset: -40; }
+  }
+  .animate-dash-path {
+    animation: dashMove 1.4s linear infinite;
+  }
+  .animate-dash-path-slow {
+    animation: dashMove 2.2s linear infinite;
+  }
 }

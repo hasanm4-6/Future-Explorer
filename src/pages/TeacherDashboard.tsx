@@ -72,7 +72,7 @@ const TeacherDashboard = () => {
             </div>
             <p className="text-muted-foreground">Track your classrooms and student progress.</p>
           </div>
-          <Button variant="explorer" size="sm">
+          <Button type="button" variant="explorer" size="sm">
             <Plus className="h-4 w-4" /> New Classroom
           </Button>
         </motion.div>
@@ -82,6 +82,7 @@ const TeacherDashboard = () => {
           {classrooms.map((c) => (
             <button
               key={c.id}
+              type="button"
               onClick={() => setSelectedClassroom(c.id)}
               className={`flex min-w-[220px] items-center gap-3 rounded-2xl border-2 p-4 transition-all ${
                 selectedClassroom === c.id
@@ -98,7 +99,7 @@ const TeacherDashboard = () => {
               </div>
             </button>
           ))}
-          <button className="flex min-w-[180px] items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border p-4 text-muted-foreground transition-colors hover:border-secondary/40 hover:text-foreground">
+          <button type="button" className="flex min-w-[180px] items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border p-4 text-muted-foreground transition-colors hover:border-secondary/40 hover:text-foreground">
             <Plus className="h-5 w-5" />
             <span className="font-display font-semibold text-sm">Add Classroom</span>
           </button>
@@ -188,9 +189,11 @@ const TeacherDashboard = () => {
                       <span className="font-bold">{student.lessonsCompleted}/{student.totalLessons}</span>
                     </div>
                     <div className="mb-3 h-3 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={`h-full rounded-full transition-all duration-700 ${isComplete ? "bg-gradient-green" : "bg-gradient-coral"}`}
-                        style={{ width: `${pct}%` }}
+                      <motion.div
+                        className={`h-full rounded-full ${isComplete ? "bg-gradient-green" : "bg-gradient-coral"}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.7, ease: "easeOut" }}
                       />
                     </div>
 
@@ -239,9 +242,11 @@ const TeacherDashboard = () => {
                           <span className="text-xs text-muted-foreground">{completed}/{classStudents.length} students</span>
                         </div>
                         <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full rounded-full bg-gradient-blue transition-all duration-700"
-                            style={{ width: `${pct}%` }}
+                          <motion.div
+                            className="h-full rounded-full bg-gradient-blue"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ duration: 0.6, ease: "easeOut", delay: i * 0.05 }}
                           />
                         </div>
                       </div>

@@ -176,7 +176,6 @@ const LessonDetail = () => {
       : [...completedScenes, sceneOrderIndex];
 
     setCompletedScenes(updated);
-    setXp((prev) => prev + 25);
     setStreak((prev) => prev + 1);
 
     const nextIndex = currentScene + 1;
@@ -229,7 +228,7 @@ const LessonDetail = () => {
 
     if (quizOptions[i]?.is_correct) {
       // Correct — reward XP + streak, keep selection visible
-      setXp((prev) => prev + 50);
+      setXp((prev) => prev + 5);
       setStreak((prev) => prev + 1);
     } else {
       // Wrong — reset streak, show hint after a short delay
@@ -315,7 +314,7 @@ const LessonDetail = () => {
               </div>
 
               <h2 className="mb-2 font-display text-3xl font-bold text-gradient-coral">
-                Mission Complete! 🎉
+                Mission Complete 🚀
               </h2>
               <p className="mb-4 text-muted-foreground">
                 Amazing job, Explorer! You&apos;ve earned a new badge!
@@ -337,13 +336,16 @@ const LessonDetail = () => {
                 </div>
               </div>
 
-              {/* Attempts summary */}
+              {/* XP summary */}
               <p className="mb-3 text-xs text-muted-foreground">
                 Completed in{" "}
                 <span className="font-bold text-foreground">{attempts}</span>{" "}
                 {attempts === 1 ? "attempt" : "attempts"}
                 {" · "}
-                <span className="font-bold text-explorer-gold">+{xp} XP earned</span>
+                <span className="font-bold text-explorer-gold">
+                  +{10 + 5 + (attempts === 1 ? 5 : 0)} XP earned
+                  {attempts === 1 && " (perfect bonus!)"}
+                </span>
               </p>
 
               {earnedBadge && (
@@ -437,6 +439,37 @@ const LessonDetail = () => {
             {lesson.icon} {lesson.title}
           </h1>
           <p className="text-sm text-muted-foreground">{lesson.description}</p>
+        </div>
+
+        {/* Video embed */}
+        <div className="mb-6 overflow-hidden rounded-2xl bg-muted shadow-card">
+          {lesson.video_url ? (
+            <div className="relative aspect-video w-full">
+              <iframe
+                src={lesson.video_url}
+                title={`${lesson.title} video`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="absolute inset-0 h-full w-full rounded-2xl border-0"
+              />
+            </div>
+          ) : (
+            <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 text-muted-foreground">
+              <span className="text-4xl">🎬</span>
+              <p className="font-display font-bold">Video Coming Soon</p>
+              <p className="text-xs">
+                Watch on{" "}
+                <a
+                  href="https://youtube.com/@futureexplorertv"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-explorer-coral underline"
+                >
+                  @FutureExplorerTV
+                </a>
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Accessibility + XP row */}
@@ -676,7 +709,7 @@ const LessonDetail = () => {
                           <div className="flex items-center gap-2 rounded-xl bg-explorer-green/10 p-3 text-explorer-green">
                             <CheckCircle className="h-5 w-5 shrink-0" />
                             <span className="font-bold">
-                              Awesome! That&apos;s correct! +50 XP
+                              Great job 🌟 +{attempts === 1 ? "10" : "5"} XP
                             </span>
                           </div>
                         ) : (
@@ -684,7 +717,7 @@ const LessonDetail = () => {
                             <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-destructive">
                               <XCircle className="h-5 w-5 shrink-0" />
                               <span className="font-bold">
-                                Not quite — give it another try!
+                                Try again 👀
                               </span>
                             </div>
                             {showHint &&

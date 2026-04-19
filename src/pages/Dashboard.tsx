@@ -43,28 +43,54 @@ function scoreToHeight(score: number): string {
   return "h-1/4";
 }
 
+// XP thresholds calibrated to new system:
+// Max XP = 8 lessons × (10 lesson + 5 quiz + 5 perfect) = 160 XP
 function xpLevel(totalXp: number): string {
-  if (totalXp >= 400) return "Master Explorer";
-  if (totalXp >= 250) return "Expert Explorer";
-  if (totalXp >= 100) return "Explorer";
+  if (totalXp >= 120) return "Master Explorer";
+  if (totalXp >= 60)  return "Expert Explorer";
+  if (totalXp >= 20)  return "Explorer";
   return "Cadet";
 }
 
 function xpToNextLevel(totalXp: number): { current: number; max: number; label: string } {
-  if (totalXp < 100) return { current: totalXp, max: 100, label: "Explorer" };
-  if (totalXp < 250) return { current: totalXp - 100, max: 150, label: "Expert Explorer" };
-  if (totalXp < 400) return { current: totalXp - 250, max: 150, label: "Master Explorer" };
-  return { current: 400, max: 400, label: "Max Level!" };
+  if (totalXp < 20)  return { current: totalXp,      max: 20,  label: "Explorer" };
+  if (totalXp < 60)  return { current: totalXp - 20, max: 40,  label: "Expert Explorer" };
+  if (totalXp < 120) return { current: totalXp - 60, max: 60,  label: "Master Explorer" };
+  return { current: 120, max: 120, label: "Max Level! 🏆" };
 }
 
-const BADGE_EMOJIS: Record<string, string> = {
-  "AI Curious": "🔍", "Robot Friend": "🤖", "Pattern Pro": "🧩",
-  "Data Detective": "🗂️", "Error Hunter": "🐛", "Voice Whiz": "🎤",
-  "AI Hero": "🦸", "AI Explorer": "🏆",
+// Returns how many XP until the next level threshold
+function xpUntilNextLevel(totalXp: number): number {
+  if (totalXp < 20)  return 20 - totalXp;
+  if (totalXp < 60)  return 60 - totalXp;
+  if (totalXp < 120) return 120 - totalXp;
+  return 0;
+}
+
+// Per-lesson badges (8 total, one per mission)
+const LESSON_BADGE_EMOJIS: Record<string, string> = {
+  "Pattern Pro": "🧩",
+  "Smart Spotter": "👁️",
+  "Pattern Detective": "🔍",
+  "Data Hero": "📦",
+  "Error Catcher": "🔧",
+  "Command Master": "🎙️",
+  "Helper Designer": "💡",
+  "AI Explorer": "🏆",
 };
 
+// Milestone achievement badges (4 total, from gamification spec)
+const ACHIEVEMENT_BADGES: Array<{ name: string; emoji: string; description: string; requirement: number; type: "lessons" | "quiz" }> = [
+  { name: "Explorer Start", emoji: "🚀", description: "Complete your 1st mission", requirement: 1, type: "lessons" },
+  { name: "AI Beginner",    emoji: "🤖", description: "Complete 3 missions",        requirement: 3, type: "lessons" },
+  { name: "AI Explorer",   emoji: "🏆", description: "Complete all 8 missions",     requirement: 8, type: "lessons" },
+  { name: "Smart Thinker", emoji: "🧠", description: "Score 100% on any quiz",      requirement: 1, type: "quiz" },
+];
+
 function badgeEmoji(name: string): string {
-  return BADGE_EMOJIS[name] ?? "🏅";
+  const achievement = ACHIEVEMENT_BADGES.find((b) => b.name === name);
+  if (achievement) return achievement.emoji;
+  return LESSON_BADGE_EMOJIS[name] ?? "🏅";
 }
 
 // ─── Derived stats (unchanged logic) ──────────────────────────────────────────
@@ -75,10 +101,12 @@ interface DashboardStats {
   progressPct: number;
   allDone: boolean;
   badges: string[];
+  achievementBadges: string[];  // "Explorer Start", "AI Beginner", "AI Explorer", "Smart Thinker"
   totalXp: number;
   streakDays: number;
   quizScores: number[];
   avgQuizScore: number;
+  perfectQuizzes: number;
   quizTrend: "improving" | "declining" | "neutral";
   skillsMastered: string[];
   skillsInProgress: string[];
@@ -88,22 +116,28 @@ interface DashboardStats {
   currentMissionProgress: number;
   currentMissionScenesDone: number;
   nextUnlockedLesson: LessonWithStatus | null;
+  xpUntilLevel: number;
+  missionsUntilNextBadge: number;  // how many more lessons to next milestone badge
+  nextMilestoneBadge: string;
 }
+
+const ACHIEVEMENT_BADGE_NAMES = ACHIEVEMENT_BADGES.map((b) => b.name);
 
 function computeStats(
   child: DbChildProfile | null,
   lessons: LessonWithStatus[],
 ): DashboardStats {
-  if (!child) {
-    return {
-      lessonsCompleted: 0, totalLessons: 0, progressPct: 0, allDone: false,
-      badges: [], totalXp: 0, streakDays: 0, quizScores: [], avgQuizScore: 0,
-      quizTrend: "neutral", skillsMastered: [], skillsInProgress: [],
-      weeklyMinutes: 0, currentMissionTitle: "No mission yet",
-      currentMissionLessonId: null, currentMissionProgress: 0,
-      currentMissionScenesDone: 0, nextUnlockedLesson: null,
-    };
-  }
+  const empty: DashboardStats = {
+    lessonsCompleted: 0, totalLessons: 0, progressPct: 0, allDone: false,
+    badges: [], achievementBadges: [], totalXp: 0, streakDays: 0,
+    quizScores: [], avgQuizScore: 0, perfectQuizzes: 0, quizTrend: "neutral",
+    skillsMastered: [], skillsInProgress: [], weeklyMinutes: 0,
+    currentMissionTitle: "No mission yet", currentMissionLessonId: null,
+    currentMissionProgress: 0, currentMissionScenesDone: 0,
+    nextUnlockedLesson: null, xpUntilLevel: 20, missionsUntilNextBadge: 1,
+    nextMilestoneBadge: "Explorer Start",
+  };
+  if (!child) return empty;
 
   const completedLessons = lessons.filter((l) => l.status === "completed");
   const unlockedLesson = lessons.find((l) => l.status === "unlocked") ?? null;
@@ -112,13 +146,16 @@ function computeStats(
   const allDone = totalLessons > 0 && lessonsCompleted === totalLessons;
   const progressPct = totalLessons > 0 ? Math.round((lessonsCompleted / totalLessons) * 100) : 0;
 
-  const badges = child.progress?.badges ?? [];
+  const allBadges = child.progress?.badges ?? [];
+  const achievementBadges = allBadges.filter((b) => ACHIEVEMENT_BADGE_NAMES.includes(b));
+  const badges = allBadges; // keep all badges for display
   const totalXp = child.progress?.total_xp ?? 0;
   const streakDays = child.progress?.streak_days ?? 0;
 
   const quizScores = completedLessons
     .map((l) => l.quiz_score)
     .filter((s): s is number => s !== null);
+  const perfectQuizzes = quizScores.filter((s) => s === 100).length;
 
   const avgQuizScore = quizScores.length > 0
     ? Math.round(quizScores.reduce((a, b) => a + b, 0) / quizScores.length)
@@ -143,12 +180,22 @@ function computeStats(
     ? Math.round((currentMissionScenesDone / TOTAL_SCENES) * 100)
     : allDone ? 100 : 0;
 
+  // Next milestone badge calculation
+  const milestoneLessons = [1, 3, 8];
+  const nextMilestone = milestoneLessons.find((m) => lessonsCompleted < m) ?? 8;
+  const missionsUntilNextBadge = Math.max(0, nextMilestone - lessonsCompleted);
+  const nextMilestoneBadge = nextMilestone === 1 ? "Explorer Start"
+    : nextMilestone === 3 ? "AI Beginner"
+    : "AI Explorer";
+
   return {
-    lessonsCompleted, totalLessons, progressPct, allDone, badges, totalXp,
-    streakDays, quizScores, avgQuizScore, quizTrend, skillsMastered,
-    skillsInProgress, weeklyMinutes, currentMissionTitle,
-    currentMissionLessonId, currentMissionProgress, currentMissionScenesDone,
-    nextUnlockedLesson: unlockedLesson,
+    lessonsCompleted, totalLessons, progressPct, allDone, badges,
+    achievementBadges, totalXp, streakDays, quizScores, avgQuizScore,
+    perfectQuizzes, quizTrend, skillsMastered, skillsInProgress, weeklyMinutes,
+    currentMissionTitle, currentMissionLessonId, currentMissionProgress,
+    currentMissionScenesDone, nextUnlockedLesson: unlockedLesson,
+    xpUntilLevel: xpUntilNextLevel(totalXp),
+    missionsUntilNextBadge, nextMilestoneBadge,
   };
 }
 
@@ -218,29 +265,77 @@ const XpLevelBar = memo(({ totalXp }: { totalXp: number }) => {
 });
 XpLevelBar.displayName = "XpLevelBar";
 
-/** Badge Gallery */
+/** Badge Gallery — split into achievement milestones + per-lesson badges */
 const BadgeGallery = memo(({
-  earned, all,
+  earned, lessonBadges, lessonsCompleted, hasPerfectQuiz,
 }: {
   earned: string[];
-  all: Array<{ badge_name: string | null; title: string }>;
+  lessonBadges: Array<{ badge_name: string | null; title: string }>;
+  lessonsCompleted: number;
+  hasPerfectQuiz: boolean;
 }) => {
-  const allBadges = all.filter((l) => l.badge_name);
-  if (allBadges.length === 0) return null;
+  const validLessonBadges = lessonBadges.filter((l) => l.badge_name);
+  const totalBadges = ACHIEVEMENT_BADGES.length + validLessonBadges.length;
+  const earnedCount = earned.length;
 
   return (
     <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-gold">
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-5 flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-gold">
           <Medal className="h-6 w-6 text-primary-foreground" />
         </div>
         <div>
           <h3 className="font-display text-lg font-bold">Badge Collection</h3>
-          <p className="text-xs text-muted-foreground">{earned.length}/{allBadges.length} earned</p>
+          <p className="text-xs text-muted-foreground">{earnedCount}/{totalBadges} earned</p>
         </div>
       </div>
+
+      {/* Achievement milestone badges */}
+      <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Achievement Badges</p>
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {ACHIEVEMENT_BADGES.map((badge) => {
+          const isEarned = earned.includes(badge.name);
+          const progress = badge.type === "lessons"
+            ? Math.min(100, Math.round((lessonsCompleted / badge.requirement) * 100))
+            : hasPerfectQuiz ? 100 : 0;
+          return (
+            <motion.div
+              key={badge.name}
+              className={`flex flex-col items-center gap-1.5 rounded-xl p-3 text-center transition-all ${
+                isEarned ? "bg-gradient-gold/20 ring-2 ring-explorer-gold/40 shadow-sm" : "bg-muted/50"
+              }`}
+              whileHover={isEarned ? { scale: 1.04 } : {}}
+            >
+              <span className={`text-2xl ${!isEarned ? "grayscale opacity-40" : ""}`}>
+                {badge.emoji}
+              </span>
+              <span className={`text-xs font-bold leading-tight ${isEarned ? "text-foreground" : "text-muted-foreground"}`}>
+                {badge.name}
+              </span>
+              {isEarned ? (
+                <span className="text-[10px] font-bold text-explorer-gold">Earned! ✓</span>
+              ) : (
+                <>
+                  <span className="text-[10px] text-muted-foreground leading-tight">{badge.description}</span>
+                  <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+                    <motion.div
+                      className="h-full rounded-full bg-explorer-gold/60"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progress}%` }}
+                      transition={{ duration: 0.6, ease: "easeOut" }}
+                    />
+                  </div>
+                </>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Per-lesson badges */}
+      <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Mission Badges</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {allBadges.map((l) => {
+        {validLessonBadges.map((l) => {
           const isEarned = l.badge_name ? earned.includes(l.badge_name) : false;
           return (
             <div
@@ -506,7 +601,7 @@ const ParentViewContent = memo(({
           <div className="space-y-3">
             <div><p className="text-xs text-muted-foreground mb-1">Topic {stats.nextUnlockedLesson.order_index}</p><h4 className="font-display text-lg font-semibold">{stats.nextUnlockedLesson.title}</h4><p className="text-sm text-muted-foreground mt-1">{stats.currentMissionScenesDone > 0 ? `${stats.currentMissionScenesDone}/${TOTAL_SCENES} scenes done — almost there!` : "Ready to start this topic!"}</p></div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-explorer-gold">+{stats.nextUnlockedLesson.xp_reward ?? 50} XP</span>
+              <span className="text-xs font-bold text-explorer-gold">+{stats.nextUnlockedLesson.xp_reward ?? 10} XP</span>
               {stats.nextUnlockedLesson.badge_name && <span className="text-xs font-bold text-accent-foreground bg-accent/30 px-2 py-0.5 rounded-full">🏅 {stats.nextUnlockedLesson.badge_name}</span>}
             </div>
             <Link to={`/lesson/${stats.nextUnlockedLesson.id}?childId=${activeChild.id}`}>
@@ -516,24 +611,94 @@ const ParentViewContent = memo(({
         ) : (<p className="text-sm text-muted-foreground">Complete the current mission to unlock more!</p>)}
       </div>
 
-      {/* Gentle Reminders */}
+      {/* Encouragement — dynamic, data-driven */}
       <div className="rounded-2xl bg-card p-6 shadow-card border-l-4 border-l-explorer-pink">
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-pink"><Calendar className="h-6 w-6 text-primary-foreground" /></div>
-          <div><h3 className="font-display text-lg font-bold">Encouragement</h3><p className="text-xs text-muted-foreground">Consistency & momentum</p></div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-pink">
+            <Sparkles className="h-6 w-6 text-primary-foreground" />
+          </div>
+          <div>
+            <h3 className="font-display text-lg font-bold">Encouragement</h3>
+            <p className="text-xs text-muted-foreground">Real-time momentum insights</p>
+          </div>
         </div>
-        <div className="space-y-3">
-          {stats.streakDays >= 3 ? (
-            <div className="flex items-center gap-3 p-3 bg-explorer-green/5 rounded-lg"><Flame className="h-5 w-5 text-explorer-green shrink-0" /><p className="text-sm text-muted-foreground"><span className="font-semibold text-explorer-green">Great consistency!</span> {stats.streakDays} day streak going strong! 🔥</p></div>
+        <div className="space-y-2.5">
+
+          {/* Streak card */}
+          {stats.streakDays >= 7 ? (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-green/10 p-3">
+              <Flame className="h-5 w-5 text-explorer-green shrink-0" />
+              <p className="text-sm"><span className="font-bold text-explorer-green">{stats.streakDays}-day streak! 🔥</span> Incredible consistency — keep it burning!</p>
+            </div>
+          ) : stats.streakDays >= 3 ? (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-green/10 p-3">
+              <Flame className="h-5 w-5 text-explorer-green shrink-0" />
+              <p className="text-sm"><span className="font-bold text-explorer-green">{stats.streakDays}-day streak!</span> Great consistency — just keep showing up daily!</p>
+            </div>
           ) : stats.streakDays > 0 ? (
-            <div className="flex items-center gap-3 p-3 bg-explorer-coral/5 rounded-lg"><Flame className="h-5 w-5 text-explorer-coral shrink-0" /><p className="text-sm text-muted-foreground"><span className="font-semibold text-explorer-coral">{stats.streakDays} day streak!</span> Keep it going — 3 days unlocks a bonus!</p></div>
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-coral/10 p-3">
+              <Flame className="h-5 w-5 text-explorer-coral shrink-0" />
+              <p className="text-sm"><span className="font-bold text-explorer-coral">{stats.streakDays}-day streak started!</span> Do 1 mission today to keep it going 🔥</p>
+            </div>
           ) : (
-            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg"><Calendar className="h-5 w-5 text-muted-foreground shrink-0" /><p className="text-sm text-muted-foreground"><span className="font-semibold">Start a streak!</span> Regular practice builds confidence fast.</p></div>
+            <div className="flex items-center gap-3 rounded-xl bg-muted p-3">
+              <Calendar className="h-5 w-5 text-muted-foreground shrink-0" />
+              <p className="text-sm"><span className="font-bold">No streak yet.</span> Complete a mission today to start one — streaks build confidence!</p>
+            </div>
           )}
-          {stats.totalXp >= 100 ? (
-            <div className="flex items-center gap-3 p-3 bg-explorer-gold/10 rounded-lg"><Zap className="h-5 w-5 text-explorer-gold shrink-0" /><p className="text-sm text-muted-foreground"><span className="font-semibold text-explorer-gold">{stats.totalXp} XP earned!</span> {activeChild.name} is levelling up fast.</p></div>
+
+          {/* XP until next level */}
+          {stats.xpUntilLevel > 0 ? (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-gold/10 p-3">
+              <Zap className="h-5 w-5 text-explorer-gold shrink-0" />
+              <p className="text-sm">
+                <span className="font-bold text-explorer-gold">{stats.totalXp} XP earned.</span>{" "}
+                Only <span className="font-bold">{stats.xpUntilLevel} XP</span> until <span className="font-bold">{xpLevel(stats.totalXp + stats.xpUntilLevel)}</span>!
+              </p>
+            </div>
           ) : (
-            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg"><Zap className="h-5 w-5 text-muted-foreground shrink-0" /><p className="text-sm text-muted-foreground"><span className="font-semibold">Keep earning XP!</span> Each mission rewards points toward new levels.</p></div>
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-gold/10 p-3">
+              <Zap className="h-5 w-5 text-explorer-gold shrink-0" />
+              <p className="text-sm"><span className="font-bold text-explorer-gold">Max level reached! 🏆</span> {activeChild.name} is a true Master Explorer.</p>
+            </div>
+          )}
+
+          {/* Next milestone badge */}
+          {!stats.allDone && stats.missionsUntilNextBadge > 0 && (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-purple/10 p-3">
+              <Trophy className="h-5 w-5 text-explorer-purple shrink-0" />
+              <p className="text-sm">
+                <span className="font-bold text-explorer-purple">{stats.missionsUntilNextBadge} mission{stats.missionsUntilNextBadge !== 1 ? "s" : ""} away</span>{" "}
+                from the <span className="font-bold">"{stats.nextMilestoneBadge}"</span> badge!
+              </p>
+            </div>
+          )}
+
+          {/* Perfect score nudge */}
+          {stats.perfectQuizzes === 0 && stats.lessonsCompleted > 0 ? (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-blue/10 p-3">
+              <Star className="h-5 w-5 text-explorer-blue shrink-0" />
+              <p className="text-sm">Score 100% on a quiz to unlock the <span className="font-bold text-explorer-blue">"Smart Thinker" 🧠</span> badge — and earn +5 bonus XP!</p>
+            </div>
+          ) : stats.perfectQuizzes > 0 ? (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-blue/10 p-3">
+              <Star className="h-5 w-5 text-explorer-blue shrink-0" />
+              <p className="text-sm"><span className="font-bold text-explorer-blue">{stats.perfectQuizzes} perfect quiz{stats.perfectQuizzes !== 1 ? "zes" : ""}!</span> Smart Thinker badge earned — outstanding work! 🧠</p>
+            </div>
+          ) : null}
+
+          {/* Quiz trend */}
+          {stats.quizTrend === "improving" && (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-green/10 p-3">
+              <TrendingUp className="h-5 w-5 text-explorer-green shrink-0" />
+              <p className="text-sm"><span className="font-bold text-explorer-green">Quiz scores are improving!</span> The practice is clearly working.</p>
+            </div>
+          )}
+          {stats.quizTrend === "declining" && (
+            <div className="flex items-center gap-3 rounded-xl bg-explorer-coral/10 p-3">
+              <TrendingDown className="h-5 w-5 text-explorer-coral shrink-0" />
+              <p className="text-sm"><span className="font-bold text-explorer-coral">Recent scores dipped.</span> Try reviewing the previous lesson — hints are available in every quiz!</p>
+            </div>
           )}
         </div>
       </div>
@@ -541,7 +706,12 @@ const ParentViewContent = memo(({
 
     {/* Badge Collection */}
     <motion.div className="mb-6" initial="hidden" animate="visible" variants={fadeUp} custom={6}>
-      <BadgeGallery earned={stats.badges} all={lessons.map((l) => ({ badge_name: l.badge_name, title: l.title }))} />
+      <BadgeGallery
+        earned={stats.badges}
+        lessonBadges={lessons.map((l) => ({ badge_name: l.badge_name, title: l.title }))}
+        lessonsCompleted={stats.lessonsCompleted}
+        hasPerfectQuiz={stats.perfectQuizzes > 0}
+      />
     </motion.div>
   </>
 ));
@@ -611,7 +781,7 @@ const ExplorerViewContent = memo(({
             <h2 className="font-display text-2xl font-bold">Topic {stats.nextUnlockedLesson.order_index}: {stats.currentMissionTitle}</h2>
             <p className="text-sm opacity-80 mt-1">{stats.currentMissionScenesDone > 0 ? `You're ${stats.currentMissionScenesDone}/${TOTAL_SCENES} scenes through — keep going!` : "Start this topic and earn a new badge!"}</p>
             <div className="mt-2 flex items-center gap-3 opacity-90">
-              <span className="text-sm font-bold">+{stats.nextUnlockedLesson.xp_reward ?? 50} XP</span>
+              <span className="text-sm font-bold">+{stats.nextUnlockedLesson.xp_reward ?? 10} XP</span>
               {stats.nextUnlockedLesson.badge_name && <span className="text-sm font-bold">🏅 {stats.nextUnlockedLesson.badge_name}</span>}
             </div>
           </div>
@@ -648,7 +818,7 @@ const ExplorerViewContent = memo(({
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {lesson.status === "completed" && lesson.badge_name && <span className="text-xs text-accent-foreground bg-accent/40 px-2 py-0.5 rounded-full font-bold">{badgeEmoji(lesson.badge_name)} {lesson.badge_name}</span>}
-              {lesson.status !== "completed" && <span className="text-xs text-muted-foreground font-bold">+{lesson.xp_reward ?? 50} XP</span>}
+              {lesson.status !== "completed" && <span className="text-xs text-muted-foreground font-bold">+{lesson.xp_reward ?? 10} XP</span>}
             </div>
           </div>
         ))}
@@ -656,12 +826,15 @@ const ExplorerViewContent = memo(({
     </motion.div>
 
     {/* Badges earned */}
-    {stats.badges.length > 0 && (
-      <motion.div className="mb-6 rounded-2xl bg-card p-6 shadow-card" initial="hidden" animate="visible" variants={fadeUp} custom={6}>
-        <div className="flex items-center gap-3 mb-4">
-          <Trophy className="h-5 w-5 text-explorer-gold" /><h3 className="font-display text-lg font-bold">My Badges</h3>
-          <span className="ml-auto text-sm font-bold text-explorer-gold">{stats.badges.length} earned!</span>
-        </div>
+    <motion.div className="mb-6 rounded-2xl bg-card p-6 shadow-card" initial="hidden" animate="visible" variants={fadeUp} custom={6}>
+      <div className="flex items-center gap-3 mb-4">
+        <Trophy className="h-5 w-5 text-explorer-gold" />
+        <h3 className="font-display text-lg font-bold">My Badges</h3>
+        <span className="ml-auto text-sm font-bold text-explorer-gold">{stats.badges.length} earned!</span>
+      </div>
+      {stats.badges.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Complete your first mission to earn the Explorer Start 🚀 badge!</p>
+      ) : (
         <div className="flex flex-wrap gap-3">
           {stats.badges.map((badge) => (
             <motion.div key={badge} className="flex flex-col items-center gap-1 rounded-xl bg-accent/40 p-3 shadow-sm min-w-[80px]" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
@@ -670,8 +843,18 @@ const ExplorerViewContent = memo(({
             </motion.div>
           ))}
         </div>
-      </motion.div>
-    )}
+      )}
+
+      {/* XP breakdown */}
+      <div className="mt-4 rounded-xl bg-muted/60 p-3">
+        <p className="mb-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">How XP Works</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span><span className="font-bold text-explorer-gold">+10 XP</span> per mission completed</span>
+          <span><span className="font-bold text-explorer-gold">+5 XP</span> for passing the quiz</span>
+          <span><span className="font-bold text-explorer-gold">+5 XP</span> bonus for 100% score 🌟</span>
+        </div>
+      </div>
+    </motion.div>
 
     {/* View full map */}
     <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={7}>

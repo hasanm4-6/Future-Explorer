@@ -153,6 +153,7 @@ export interface LessonWithStatus {
   badge_name: string | null;
   xp_reward: number;
   level: number;
+  video_url: string | null;
   status: LessonStatus;
   current_scene_index: number;
   completed_scenes: number[];

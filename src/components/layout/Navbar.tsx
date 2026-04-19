@@ -136,27 +136,39 @@ const Navbar = () => {
           <div className="flex flex-col gap-3">
             {user ? (
               <>
-                <Link
-                  to="/dashboard"
-                  className="font-body font-semibold text-muted-foreground"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  to="/lessons"
-                  className="font-body font-semibold text-muted-foreground"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  Lessons
-                </Link>
-                <Link
-                  to="/downloads"
-                  className="font-body font-semibold text-muted-foreground"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  Downloads
-                </Link>
+                {isTeacher ? (
+                  <Link
+                    to="/teacher"
+                    className="font-body font-semibold text-muted-foreground"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Dashboard
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      to="/dashboard"
+                      className="font-body font-semibold text-muted-foreground"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      Dashboard
+                    </Link>
+                    <Link
+                      to="/lessons"
+                      className="font-body font-semibold text-muted-foreground"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      Lessons
+                    </Link>
+                    <Link
+                      to="/downloads"
+                      className="font-body font-semibold text-muted-foreground"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      Downloads
+                    </Link>
+                  </>
+                )}
                 <Link
                   to="/settings"
                   className="font-body font-semibold text-muted-foreground"
@@ -165,6 +177,7 @@ const Navbar = () => {
                   Settings
                 </Link>
                 <Button
+                  type="button"
                   variant="explorer-outline"
                   onClick={handleLogout}
                   className="w-full"

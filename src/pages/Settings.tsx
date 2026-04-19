@@ -470,25 +470,20 @@ const Settings = () => {
             </h2>
             <div className="mb-4 flex items-center justify-between rounded-xl bg-muted p-4">
               <div>
-                <p className="font-display font-bold">Yearly Explorer</p>
+                <p className="font-display font-bold">Family Explorer</p>
                 <p className="text-sm text-muted-foreground">
-                  $79.99/year · Renews Jan 15, 2027
+                  Full access · Up to 3 child profiles
                 </p>
               </div>
               <span className="rounded-full bg-explorer-green/10 px-3 py-1 text-xs font-bold text-explorer-green">
                 Active
               </span>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link to="/pricing">
-                <Button variant="explorer-outline" size="sm">
-                  Change Plan
-                </Button>
-              </Link>
-              <Button variant="ghost" size="sm" disabled>
-                Billing portal coming soon
+            <Link to="/pricing">
+              <Button type="button" variant="explorer-outline" size="sm">
+                View Plans
               </Button>
-            </div>
+            </Link>
           </div>
 
           <div className="rounded-2xl bg-card p-6 shadow-card">
